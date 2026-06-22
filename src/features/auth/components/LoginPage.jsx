@@ -93,8 +93,8 @@ const LoginPage = () => {
           className="w-full max-w-sm relative z-10"
         >
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-orange-950">Bienvenido de nuevo</h1>
-            <p className="text-sm text-orange-400 mt-1">Inicia sesión en tu cuenta</p>
+             <h1 style={{ fontFamily: "'AlfaSlabOne', serif" }} className="text-3xl text-orange-950">Bienvenido de nuevo a</h1>
+              <h1 style={{ fontFamily: "'AlfaSlabOne', serif" }} className="text-3xl text-orange-950 -mt-2 text-center mt-1">Gestiona-2</h1>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
