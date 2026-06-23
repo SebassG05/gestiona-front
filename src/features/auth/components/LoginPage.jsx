@@ -46,7 +46,10 @@ const LoginPage = () => {
   const [privacyError, setPrivacyError] = useState("");
 
   const inviteCode = useMemo(() => new URLSearchParams(location.search).get("invite") || "", [location.search]);
-  const postLoginRedirect = inviteCode ? `/dashboard/join?code=${encodeURIComponent(inviteCode)}` : "/dashboard";
+  const routeRedirect = location.state?.from
+    ? `${location.state.from.pathname}${location.state.from.search || ""}`
+    : "/dashboard";
+  const postLoginRedirect = inviteCode ? `/dashboard/join?code=${encodeURIComponent(inviteCode)}` : routeRedirect;
   const postRegisterRedirect = inviteCode ? `/login?invite=${encodeURIComponent(inviteCode)}` : "/login";
 
   const error = privacyError || (isRegister ? registerError : loginError);

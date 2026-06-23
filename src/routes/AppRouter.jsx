@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LoginPage from '../features/auth/components/LoginPage.jsx';
 import CreatePortalPage from '../features/dashboard/components/CreatePortalPage.jsx';
 import DashboardPage from '../features/dashboard/components/DashboardPage.jsx';
@@ -8,17 +8,86 @@ import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspac
 import CookieBanner from '../features/legal/components/CookieBanner.jsx';
 import LegalPage from '../features/legal/components/LegalPage.jsx';
 
+const hasSession = () => Boolean(localStorage.getItem('token'));
+
+const ProtectedRoute = ({ children }) => {
+  const location = useLocation();
+
+  if (!hasSession()) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
+const PublicOnlyRoute = ({ children }) => {
+  const location = useLocation();
+  const inviteCode = new URLSearchParams(location.search).get('invite');
+
+  if (hasSession()) {
+    const destination = inviteCode
+      ? `/dashboard/join?code=${encodeURIComponent(inviteCode)}`
+      : '/dashboard';
+
+    return <Navigate to={destination} replace />;
+  }
+
+  return children;
+};
+
 const AppRouter = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/dashboard/create" element={<CreatePortalPage />} />
-        <Route path="/dashboard/join" element={<JoinPortalPage />} />
-        <Route path="/dashboard/portals" element={<MyPortalsPage />} />
-        <Route path="/dashboard/portal/:portalId" element={<PortalWorkspacePage />} />
+        <Route path="/" element={<Navigate to={hasSession() ? '/dashboard' : '/login'} replace />} />
+        <Route
+          path="/login"
+          element={
+            <PublicOnlyRoute>
+              <LoginPage />
+            </PublicOnlyRoute>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/create"
+          element={
+            <ProtectedRoute>
+              <CreatePortalPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/join"
+          element={
+            <ProtectedRoute>
+              <JoinPortalPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portals"
+          element={
+            <ProtectedRoute>
+              <MyPortalsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId"
+          element={
+            <ProtectedRoute>
+              <PortalWorkspacePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/aviso-legal" element={<LegalPage />} />
         <Route path="/politica-privacidad" element={<LegalPage />} />
         <Route path="/politica-cookies" element={<LegalPage />} />
