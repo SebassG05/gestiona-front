@@ -1,7 +1,7 @@
 ﻿import { useState } from "react";
-import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useLogin } from "../hooks/useLogin.js";
+import { useRegister } from "../hooks/useRegister.js";
 
 const bars = [
   { height: 200,  gradient: "linear-gradient(to bottom, #ffe380, #b38b00, #FFA500)", delay: 0.22 },
@@ -17,9 +17,30 @@ const topBars = [
   { height: 120, gradient: "linear-gradient(to bottom, #ff7300, #fbde3c, #c8ff00)", delay: 0.34 },
 ];
 
+const fieldVariants = {
+  hidden: { opacity: 0, height: 0, marginBottom: 0 },
+  visible: {
+    opacity: 1,
+    height: "auto",
+    marginBottom: 0,
+    transition: { duration: 0.38, ease: [0.4, 0, 0.2, 1] },
+  },
+  exit: {
+    opacity: 0,
+    height: 0,
+    marginBottom: 0,
+    transition: { duration: 0.28, ease: [0.4, 0, 0.2, 1] },
+  },
+};
+
 const LoginPage = () => {
-  const { login, error, isLoading } = useLogin();
-  const [form, setForm] = useState({ email: "", password: "" });
+  const { login, error: loginError, isLoading: loginLoading } = useLogin();
+  const { register, error: registerError, isLoading: registerLoading } = useRegister();
+  const [isRegister, setIsRegister] = useState(false);
+  const [form, setForm] = useState({ username: "", email: "", password: "", confirmPassword: "" });
+
+  const error = isRegister ? registerError : loginError;
+  const isLoading = isRegister ? registerLoading : loginLoading;
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -27,7 +48,16 @@ const LoginPage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    login(form);
+    if (isRegister) {
+      register(form);
+    } else {
+      login({ email: form.email, password: form.password });
+    }
+  };
+
+  const toggleMode = () => {
+    setIsRegister((prev) => !prev);
+    setForm({ username: "", email: "", password: "", confirmPassword: "" });
   };
 
   return (
@@ -86,6 +116,7 @@ const LoginPage = () => {
             />
           ))}
         </div>
+
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -93,13 +124,65 @@ const LoginPage = () => {
           className="w-full max-w-sm relative z-10"
         >
           <div className="mb-8">
-             <h1 style={{ fontFamily: "'AlfaSlabOne', serif" }} className="text-3xl text-orange-950">Bienvenido de nuevo a</h1>
-              <h1 style={{ fontFamily: "'AlfaSlabOne', serif" }} className="text-3xl text-orange-950 -mt-2 text-center mt-1">Gestiona-2</h1>
+            <AnimatePresence mode="wait">
+              {isRegister ? (
+                <motion.div
+                  key="register-title"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <h1 style={{ fontFamily: "'AlfaSlabOne', serif" }} className="text-3xl text-orange-950 text-center">Crea tu cuenta en</h1>
+                  <h1 style={{ fontFamily: "'AlfaSlabOne', serif" }} className="text-3xl text-orange-950 text-center mt-1">Gestiona-2</h1>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="login-title"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <h1 style={{ fontFamily: "'AlfaSlabOne', serif" }} className="text-3xl text-orange-950 text-center">Bienvenido de nuevo a</h1>
+                  <h1 style={{ fontFamily: "'AlfaSlabOne', serif" }} className="text-3xl text-orange-950 text-center mt-1">Gestiona-2</h1>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            {/* Campo username — solo en modo registro */}
+            <AnimatePresence initial={false}>
+              {isRegister && (
+                <motion.div
+                  key="username-field"
+                  variants={fieldVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  style={{ overflow: "hidden" }}
+                >
+                  <label className="block text-sm font-medium text-orange-800 mb-1" htmlFor="username">
+                    Nombre de usuario
+                  </label>
+                  <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    autoComplete="username"
+                    value={form.username}
+                    onChange={handleChange}
+                    required={isRegister}
+                    className="w-full px-3.5 py-2.5 border border-orange-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-orange-50 placeholder-orange-300 text-orange-900"
+                    placeholder="tu_usuario"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div>
-              <label className="block text-sm font-medium text-orange-800 mb-1" htmlFor="email">
+              <label className="block text-sm font-medium text-orange-800 mb-1 mt-4" htmlFor="email">
                 Email
               </label>
               <input
@@ -123,7 +206,7 @@ const LoginPage = () => {
                 id="password"
                 name="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete={isRegister ? "new-password" : "current-password"}
                 value={form.password}
                 onChange={handleChange}
                 required
@@ -131,6 +214,36 @@ const LoginPage = () => {
                 placeholder="Tu contraseña"
               />
             </div>
+
+            {/* Campo confirmar contraseña — solo en modo registro */}
+            <AnimatePresence initial={false}>
+              {isRegister && (
+                <motion.div
+                  key="confirmPassword-field"
+                  variants={fieldVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  style={{ overflow: "hidden" }}
+                  className="pb-3"
+                >
+                  <label className="block text-sm font-medium text-orange-800 mb-1" htmlFor="confirmPassword">
+                    Confirmar contraseña
+                  </label>
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    value={form.confirmPassword}
+                    onChange={handleChange}
+                    required={isRegister}
+                    className="w-full px-3.5 py-2.5 border border-orange-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-orange-50 placeholder-orange-300 text-orange-900"
+                    placeholder="Repite tu contraseña"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {error && (
               <motion.p
@@ -147,15 +260,21 @@ const LoginPage = () => {
               disabled={isLoading}
               className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-all cursor-pointer"
             >
-              {isLoading ? "Entrando..." : "Iniciar sesión"}
+              {isLoading
+                ? isRegister ? "Registrando..." : "Entrando..."
+                : isRegister ? "Crear cuenta" : "Iniciar sesión"}
             </button>
           </form>
 
           <p className="text-sm text-center text-orange-400 mt-6">
-            ¿No tienes cuenta?{" "}
-            <Link to="/register" className="text-orange-600 hover:underline font-medium">
-              Regístrate
-            </Link>
+            {isRegister ? "¿Ya tienes cuenta? " : "¿No tienes cuenta? "}
+            <button
+              type="button"
+              onClick={toggleMode}
+              className="text-orange-600 hover:underline font-medium cursor-pointer bg-transparent border-none p-0"
+            >
+              {isRegister ? "Inicia sesión" : "Regístrate"}
+            </button>
           </p>
         </motion.div>
       </div>
