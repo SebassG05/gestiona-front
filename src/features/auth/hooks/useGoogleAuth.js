@@ -16,6 +16,7 @@ export const useGoogleAuth = () => {
           accessToken: tokenResponse.access_token,
         });
         localStorage.setItem('token', data.data.token);
+        localStorage.setItem('user', JSON.stringify(data.data.user));
         window.location.href = '/dashboard';
       } catch (err) {
         setError(err?.response?.data?.message || 'Error al iniciar sesión con Google');

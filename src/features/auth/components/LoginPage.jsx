@@ -40,16 +40,23 @@ const LoginPage = () => {
   const { loginWithGoogle, error: googleError, isLoading: googleLoading } = useGoogleAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", password: "", confirmPassword: "" });
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [privacyError, setPrivacyError] = useState("");
 
-  const error = isRegister ? registerError : loginError;
+  const error = privacyError || (isRegister ? registerError : loginError);
   const isLoading = isRegister ? registerLoading : loginLoading;
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setPrivacyError("");
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (isRegister) {
+      if (!privacyAccepted) {
+        setPrivacyError("Debes aceptar la información básica de protección de datos.");
+        return;
+      }
       register(form);
     } else {
       login({ email: form.email, password: form.password });
@@ -59,6 +66,8 @@ const LoginPage = () => {
   const toggleMode = () => {
     setIsRegister((prev) => !prev);
     setForm({ username: "", email: "", password: "", confirmPassword: "" });
+    setPrivacyAccepted(false);
+    setPrivacyError("");
   };
 
   return (
@@ -245,6 +254,26 @@ const LoginPage = () => {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {isRegister && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2.5 text-xs leading-5 text-orange-900">
+                <input
+                  type="checkbox"
+                  checked={privacyAccepted}
+                  onChange={(event) => {
+                    setPrivacyAccepted(event.target.checked);
+                    setPrivacyError("");
+                  }}
+                  className="mt-1 accent-orange-500"
+                />
+                <span>
+                  He leído y acepto la información básica de protección de datos.
+                  <a href="/politica-privacidad" className="ml-1 font-semibold text-orange-600 hover:underline">
+                    Política de Privacidad
+                  </a>
+                </span>
+              </label>
+            )}
 
             {error && (
               <motion.p
