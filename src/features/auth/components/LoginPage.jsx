@@ -276,6 +276,15 @@ const LoginPage = () => {
               {isRegister ? "Inicia sesión" : "Regístrate"}
             </button>
           </p>
+          
+          <div className="flex items-center my-5 w-full select-none pointer-events-none">
+            <div className="flex-grow border-t border-rose-200"></div>
+            <span className="flex-shrink mx-4 text-rose-400 text-xs font-normal whitespace-nowrap">
+              Acceso rápido con
+            </span>
+            <div className="flex-grow border-t border-rose-200"></div>
+          </div>
+          
         </motion.div>
       </div>
     </div>
