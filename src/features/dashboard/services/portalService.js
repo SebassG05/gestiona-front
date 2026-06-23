@@ -19,3 +19,8 @@ export const respondToInvitation = async ({ code, action }) => {
   const response = await api.post(`/portals/invitations/${encodeURIComponent(code)}/respond`, { action });
   return response.data;
 };
+
+export const deletePortal = async (portalId) => {
+  const response = await api.delete(`/portals/${encodeURIComponent(portalId)}`);
+  return response.data;
+};

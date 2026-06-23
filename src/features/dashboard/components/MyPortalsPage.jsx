@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useMyPortals } from '../hooks/useMyPortals.js';
 
 const badgeStyles = {
@@ -26,7 +27,19 @@ const itemVariants = {
 
 const MyPortalsPage = () => {
   const navigate = useNavigate();
-  const { portals, isLoading, error } = useMyPortals();
+  const { portals, isLoading, error, deletingPortalId, removePortal } = useMyPortals();
+  const [portalToDelete, setPortalToDelete] = useState(null);
+
+  const handleDeletePortal = (portal) => {
+    setPortalToDelete(portal);
+  };
+
+  const confirmDeletePortal = async () => {
+    if (!portalToDelete) return;
+
+    await removePortal(portalToDelete.id);
+    setPortalToDelete(null);
+  };
 
   return (
     <div className="min-h-screen overflow-hidden bg-[#fafafa]">
@@ -117,10 +130,9 @@ const MyPortalsPage = () => {
               className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
             >
               {portals.map((portal) => (
-                <motion.button
+                <motion.article
                   key={portal.id}
                   variants={itemVariants}
-                  onClick={() => navigate(`/dashboard/portal/${portal.id}`)}
                   className="group flex flex-col rounded-2xl border border-orange-100 bg-white/90 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                 >
                   <div className="flex items-start justify-between gap-3 border-b border-orange-100 p-5">
@@ -164,17 +176,76 @@ const MyPortalsPage = () => {
                     </p>
                   </div>
 
-                  <div className="px-5 pb-5">
-                    <span className="text-sm font-medium text-orange-400 transition group-hover:text-orange-600">
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-5">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/dashboard/portal/${portal.id}`)}
+                      className="text-sm font-medium text-orange-400 transition hover:text-orange-600"
+                    >
                       Entrar al portal
-                    </span>
+                    </button>
+
+                    {portal.accessLabel === 'Creado por ti' && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePortal(portal)}
+                        disabled={deletingPortalId === portal.id}
+                        className="cursor-pointer rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-500 transition hover:border-red-200 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {deletingPortalId === portal.id ? 'Eliminando...' : 'Eliminar'}
+                      </button>
+                    )}
                   </div>
-                </motion.button>
+                </motion.article>
               ))}
             </motion.div>
           )}
         </section>
       </main>
+
+      <AnimatePresence>
+        {portalToDelete && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/45 px-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.28, ease: 'easeInOut' }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+              className="w-full max-w-md rounded-2xl border border-orange-100 bg-white p-6 shadow-2xl"
+            >
+              <p className="text-sm font-semibold uppercase tracking-wide text-rose-400">Eliminar portal</p>
+              <h2 className="mt-3 text-2xl font-semibold text-orange-950">{portalToDelete.name}</h2>
+              <p className="mt-3 text-sm leading-6 text-orange-500">
+                Vas a eliminar este portal y dejará de aparecer para sus miembros. Esta acción no se puede deshacer.
+              </p>
+
+              <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setPortalToDelete(null)}
+                  className="w-full cursor-pointer rounded-xl border border-orange-200 bg-white px-5 py-3 text-sm font-semibold text-orange-900 transition duration-200 hover:-translate-y-0.5 hover:bg-orange-50 active:translate-y-0 sm:w-auto"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeletePortal}
+                  disabled={deletingPortalId === portalToDelete.id}
+                  className="w-full cursor-pointer rounded-xl bg-gradient-to-r from-red-500 to-orange-500 px-5 py-3 text-sm font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:from-red-600 hover:to-orange-600 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                >
+                  {deletingPortalId === portalToDelete.id ? 'Eliminando...' : 'Eliminar definitivamente'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

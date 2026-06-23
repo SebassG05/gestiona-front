@@ -317,6 +317,10 @@ function CookiePolicy() {
 const LegalPage = () => {
   const location = useLocation();
   const page = legalPages[location.pathname] || legalPages['/aviso-legal'];
+  const hasSession = Boolean(localStorage.getItem('token'));
+  const backLink = hasSession
+    ? { to: '/dashboard', label: 'Volver al dashboard' }
+    : { to: '/login', label: 'Volver al login' };
 
   return (
     <div className="min-h-screen bg-[#fafafa] px-4 py-8 sm:px-6 lg:px-8">
@@ -326,8 +330,8 @@ const LegalPage = () => {
         transition={{ duration: 0.35 }}
         className="mx-auto max-w-5xl"
       >
-        <Link to="/dashboard" className="inline-flex text-sm font-medium text-orange-500 transition hover:text-orange-700">
-          Volver al dashboard
+        <Link to={backLink.to} className="inline-flex text-sm font-medium text-orange-500 transition hover:text-orange-700">
+          {backLink.label}
         </Link>
         <header className="my-8">
           <p className="text-sm font-semibold uppercase tracking-wide text-orange-500">{page.eyebrow}</p>
