@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
 import api from '../../../config/api.js';
 
 export const useGoogleAuth = () => {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const redirectRef = useRef('/dashboard');
 
-  const loginWithGoogle = useGoogleLogin({
+  const loginWithGoogleInternal = useGoogleLogin({
     flow: 'implicit',
     onSuccess: async (tokenResponse) => {
       setIsLoading(true);
@@ -17,7 +18,7 @@ export const useGoogleAuth = () => {
         });
         localStorage.setItem('token', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
-        window.location.href = '/dashboard';
+        window.location.href = redirectRef.current;
       } catch (err) {
         setError(err?.response?.data?.message || 'Error al iniciar sesión con Google');
       } finally {
@@ -26,6 +27,11 @@ export const useGoogleAuth = () => {
     },
     onError: () => setError('Error al conectar con Google'),
   });
+
+  const loginWithGoogle = (nextRedirectTo = '/dashboard') => {
+    redirectRef.current = nextRedirectTo;
+    loginWithGoogleInternal();
+  };
 
   return { loginWithGoogle, error, isLoading };
 };

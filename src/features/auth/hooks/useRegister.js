@@ -7,12 +7,12 @@ export const useRegister = () => {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const register = async (formData) => {
+  const register = async (formData, redirectTo = '/login') => {
     setError(null);
     setIsLoading(true);
     try {
       await registerUser(formData);
-      navigate('/login');
+      navigate(redirectTo);
     } catch (err) {
       const message = err.response?.data?.message || 'Error al registrar usuario';
       setError(message);

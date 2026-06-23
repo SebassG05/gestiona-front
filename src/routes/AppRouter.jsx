@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from '../features/auth/components/LoginPage.jsx';
 import CreatePortalPage from '../features/dashboard/components/CreatePortalPage.jsx';
 import DashboardPage from '../features/dashboard/components/DashboardPage.jsx';
+import JoinPortalPage from '../features/dashboard/components/JoinPortalPage.jsx';
 import MyPortalsPage from '../features/dashboard/components/MyPortalsPage.jsx';
 import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspacePage.jsx';
 import CookieBanner from '../features/legal/components/CookieBanner.jsx';
@@ -15,6 +16,7 @@ const AppRouter = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dashboard/create" element={<CreatePortalPage />} />
+        <Route path="/dashboard/join" element={<JoinPortalPage />} />
         <Route path="/dashboard/portals" element={<MyPortalsPage />} />
         <Route path="/dashboard/portal/:portalId" element={<PortalWorkspacePage />} />
         <Route path="/aviso-legal" element={<LegalPage />} />

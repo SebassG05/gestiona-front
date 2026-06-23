@@ -1,11 +1,12 @@
-﻿import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLogin } from "../hooks/useLogin.js";
 import { useRegister } from "../hooks/useRegister.js";
 import { useGoogleAuth } from "../hooks/useGoogleAuth.js";
 
 const bars = [
-  { height: 200,  gradient: "linear-gradient(to bottom, #ffe380, #b38b00, #FFA500)", delay: 0.22 },
+  { height: 200, gradient: "linear-gradient(to bottom, #ffe380, #b38b00, #FFA500)", delay: 0.22 },
   { height: 400, gradient: "linear-gradient(to top, #73ff00, #ffc800, #FFA500)", delay: 0 },
   { height: 360, gradient: "linear-gradient(to top, #e11d48, #a54290, #ff3fd5)", delay: 0.44 },
   { height: 240, gradient: "linear-gradient(to top, #ef4444, #ff5050, #ff2929)", delay: 0.12 },
@@ -14,7 +15,7 @@ const bars = [
 
 const topBars = [
   { height: 140, gradient: "linear-gradient(to bottom, #ff7300, rgb(255, 134, 53), #fa2500)", delay: 0.1 },
-  { height: 200,  gradient: "linear-gradient(to bottom, #ffe380, #b38b00, #FFA500)", delay: 0.22 },
+  { height: 200, gradient: "linear-gradient(to bottom, #ffe380, #b38b00, #FFA500)", delay: 0.22 },
   { height: 120, gradient: "linear-gradient(to bottom, #ff7300, #fbde3c, #c8ff00)", delay: 0.34 },
 ];
 
@@ -35,6 +36,7 @@ const fieldVariants = {
 };
 
 const LoginPage = () => {
+  const location = useLocation();
   const { login, error: loginError, isLoading: loginLoading } = useLogin();
   const { register, error: registerError, isLoading: registerLoading } = useRegister();
   const { loginWithGoogle, error: googleError, isLoading: googleLoading } = useGoogleAuth();
@@ -43,8 +45,13 @@ const LoginPage = () => {
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [privacyError, setPrivacyError] = useState("");
 
+  const inviteCode = useMemo(() => new URLSearchParams(location.search).get("invite") || "", [location.search]);
+  const postLoginRedirect = inviteCode ? `/dashboard/join?code=${encodeURIComponent(inviteCode)}` : "/dashboard";
+  const postRegisterRedirect = inviteCode ? `/login?invite=${encodeURIComponent(inviteCode)}` : "/login";
+
   const error = privacyError || (isRegister ? registerError : loginError);
   const isLoading = isRegister ? registerLoading : loginLoading;
+
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setPrivacyError("");
@@ -52,15 +59,18 @@ const LoginPage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
     if (isRegister) {
       if (!privacyAccepted) {
         setPrivacyError("Debes aceptar la información básica de protección de datos.");
         return;
       }
-      register(form);
-    } else {
-      login({ email: form.email, password: form.password });
+
+      register(form, postRegisterRedirect);
+      return;
     }
+
+    login({ email: form.email, password: form.password }, postLoginRedirect);
   };
 
   const toggleMode = () => {
@@ -72,7 +82,6 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-screen flex">
-      {/* Imagen izquierda */}
       <div className="hidden lg:block w-[55%] relative">
         <img
           src="https://res.cloudinary.com/dyfvdciiu/image/upload/q_auto/f_auto/v1782130555/Airbrush-IMAGE-ENHANCER-1782130577588-1782130577588_kv7etr.jpg"
@@ -81,12 +90,10 @@ const LoginPage = () => {
         />
       </div>
 
-      {/* Formulario derecha */}
       <div
         className="flex-1 flex items-center justify-center px-6 py-12 relative overflow-hidden"
         style={{ backgroundColor: "#ffffff" }}
       >
-        {/* Barras abajo separadas de la derecha */}
         <div className="absolute bottom-0 right-8 flex items-end gap-2 pointer-events-none select-none">
           {bars.map((bar, i) => (
             <motion.div
@@ -106,7 +113,6 @@ const LoginPage = () => {
           ))}
         </div>
 
-        {/* Barras arriba a la izquierda con margen del difuminado */}
         <div className="absolute top-0 left-10 flex items-start gap-2 pointer-events-none select-none">
           {topBars.map((bar, i) => (
             <motion.div
@@ -160,8 +166,13 @@ const LoginPage = () => {
             </AnimatePresence>
           </div>
 
+          {inviteCode && (
+            <div className="mb-5 rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
+              Has llegado desde una invitacion. Cuando inicies sesion te llevaremos directamente a <strong>Unirme a un portal</strong> con tu codigo.
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-            {/* Campo username — solo en modo registro */}
             <AnimatePresence initial={false}>
               {isRegister && (
                 <motion.div
@@ -224,7 +235,6 @@ const LoginPage = () => {
               />
             </div>
 
-            {/* Campo confirmar contraseña — solo en modo registro */}
             <AnimatePresence initial={false}>
               {isRegister && (
                 <motion.div
@@ -266,9 +276,9 @@ const LoginPage = () => {
                   className="mt-1 accent-orange-500"
                 />
                 <span>
-                  He leído y acepto la información básica de protección de datos.
+                  He leido y acepto la informacion basica de proteccion de datos.
                   <a href="/politica-privacidad" className="ml-1 font-semibold text-orange-600 hover:underline">
-                    Política de Privacidad
+                    Politica de Privacidad
                   </a>
                 </span>
               </label>
@@ -289,9 +299,7 @@ const LoginPage = () => {
               disabled={isLoading}
               className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-all cursor-pointer"
             >
-              {isLoading
-                ? isRegister ? "Registrando..." : "Entrando..."
-                : isRegister ? "Crear cuenta" : "Iniciar sesión"}
+              {isLoading ? (isRegister ? "Registrando..." : "Entrando...") : isRegister ? "Crear cuenta" : "Iniciar sesion"}
             </button>
           </form>
 
@@ -302,14 +310,14 @@ const LoginPage = () => {
               onClick={toggleMode}
               className="text-orange-600 hover:underline font-medium cursor-pointer bg-transparent border-none p-0"
             >
-              {isRegister ? "Inicia sesión" : "Regístrate"}
+              {isRegister ? "Inicia sesion" : "Registrate"}
             </button>
           </p>
-          
+
           <div className="flex items-center my-5 w-full select-none">
             <div className="flex-grow border-t border-rose-200"></div>
             <span className="flex-shrink mx-4 text-rose-400 text-xs font-normal whitespace-nowrap">
-              Acceso rápido con
+              Acceso rapido con
             </span>
             <div className="flex-grow border-t border-rose-200"></div>
           </div>
@@ -326,7 +334,7 @@ const LoginPage = () => {
 
           <button
             type="button"
-            onClick={() => loginWithGoogle()}
+            onClick={() => loginWithGoogle(postLoginRedirect)}
             disabled={googleLoading}
             className="w-full flex items-center justify-center gap-3 border border-orange-200 bg-white hover:bg-orange-50 text-orange-900 text-sm font-medium py-2.5 rounded-lg transition-all cursor-pointer disabled:opacity-50"
           >
@@ -336,9 +344,8 @@ const LoginPage = () => {
               <path d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.31 0-9.821-3.317-11.561-7.951l-6.522 5.025C9.505 39.556 16.227 44 24 44z" fill="#4CAF50"/>
               <path d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" fill="#1976D2"/>
             </svg>
-            {googleLoading ? 'Conectando...' : 'Continuar con Google'}
+            {googleLoading ? "Conectando..." : "Continuar con Google"}
           </button>
-
         </motion.div>
       </div>
     </div>
