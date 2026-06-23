@@ -24,3 +24,8 @@ export const deletePortal = async (portalId) => {
   const response = await api.delete(`/portals/${encodeURIComponent(portalId)}`);
   return response.data;
 };
+
+export const getPortalMembers = async (portalId) => {
+  const response = await api.get(`/portals/${encodeURIComponent(portalId)}/members`);
+  return response.data;
+};

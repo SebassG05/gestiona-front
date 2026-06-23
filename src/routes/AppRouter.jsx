@@ -1,9 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LoginPage from '../features/auth/components/LoginPage.jsx';
+import CreateProposalPage from '../features/dashboard/components/CreateProposalPage.jsx';
 import CreatePortalPage from '../features/dashboard/components/CreatePortalPage.jsx';
 import DashboardPage from '../features/dashboard/components/DashboardPage.jsx';
 import JoinPortalPage from '../features/dashboard/components/JoinPortalPage.jsx';
 import MyPortalsPage from '../features/dashboard/components/MyPortalsPage.jsx';
+import PortalProjectsPage from '../features/dashboard/components/PortalProjectsPage.jsx';
+import PortalProposalsPage from '../features/dashboard/components/PortalProposalsPage.jsx';
 import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspacePage.jsx';
 import CookieBanner from '../features/legal/components/CookieBanner.jsx';
 import LegalPage from '../features/legal/components/LegalPage.jsx';
@@ -85,6 +88,30 @@ const AppRouter = () => {
           element={
             <ProtectedRoute>
               <PortalWorkspacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/projects"
+          element={
+            <ProtectedRoute>
+              <PortalProjectsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/proposals"
+          element={
+            <ProtectedRoute>
+              <PortalProposalsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/proposals/create"
+          element={
+            <ProtectedRoute>
+              <CreateProposalPage />
             </ProtectedRoute>
           }
         />
