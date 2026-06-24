@@ -1543,7 +1543,31 @@ const PortalProposalsPage = () => {
                         {selectedProposal.responsable?.username || selectedProposal.responsable?.email || 'Sin asignar'}
                       </DetailSection>
                       <DetailSection icon={Mail} title="Contactos y mails">
-                        {selectedProposal.responsable?.email || 'Sin contactos registrados'}
+                        <div className="space-y-3">
+                          <p>
+                            {selectedProposal.contactCount > 0
+                              ? `${selectedProposal.contactCount} ${
+                                  selectedProposal.contactCount === 1
+                                    ? 'contacto registrado'
+                                    : 'contactos registrados'
+                                }`
+                              : 'Sin contactos registrados'}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate(
+                                `/dashboard/portal/${portalId}/proposals/${selectedProposal._id}/contacts`
+                              )
+                            }
+                            className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:border-orange-200 hover:bg-orange-100"
+                          >
+                            <UserPlus size={15} strokeWidth={2.2} />
+                            {selectedProposal.contactCount > 0
+                              ? 'Ver y gestionar contactos'
+                              : 'Añadir contacto'}
+                          </button>
+                        </div>
                       </DetailSection>
                       <DetailSection icon={Building2} title="Coordinador / Lead">
                         {selectedProposal.coordinadorLead || 'Sin definir'}
