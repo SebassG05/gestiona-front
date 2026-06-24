@@ -7,3 +7,33 @@
   font-style: normal;
   font-display: swap;
 }
+
+.gestiona-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #fb923c #fff2e8;
+}
+
+.gestiona-scrollbar::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.gestiona-scrollbar::-webkit-scrollbar-track {
+  background: linear-gradient(90deg, #fff7ed 0%, #fff1f2 100%);
+  border-radius: 999px;
+  border: 1px solid #fed7aa;
+}
+
+.gestiona-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #f97316 0%, #fb7185 100%);
+  border-radius: 999px;
+  border: 2px solid #fff7ed;
+}
+
+.gestiona-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, #ea580c 0%, #f43f5e 100%);
+}
+
+.gestiona-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}

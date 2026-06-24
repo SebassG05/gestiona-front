@@ -24,3 +24,10 @@ export const updateProposal = async ({ portalId, proposalId, data }) => {
   );
   return response.data;
 };
+
+export const deleteProposal = async ({ portalId, proposalId }) => {
+  const response = await api.delete(
+    `/portals/${encodeURIComponent(portalId)}/proposals/${encodeURIComponent(proposalId)}`
+  );
+  return response.data;
+};

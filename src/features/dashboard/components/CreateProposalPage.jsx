@@ -268,11 +268,6 @@ const CreateProposalPage = () => {
     }
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    await persistProposal('active');
-  };
-
   const handleSaveDraft = async () => {
     await persistProposal('draft');
   };
@@ -409,7 +404,7 @@ const CreateProposalPage = () => {
           transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
           className="relative z-10 mx-auto max-w-[1500px]"
         >
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={(event) => event.preventDefault()}>
             <header className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex items-start gap-4">
                 <button
@@ -463,7 +458,8 @@ const CreateProposalPage = () => {
                   Limpiar
                 </button>
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={() => persistProposal('active')}
                   disabled={isSaving || isLoadingProposal}
                   className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-500 bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -564,8 +560,9 @@ const CreateProposalPage = () => {
 
                 {isLastStep ? (
                   <button
-                  type="submit"
-                    disabled={isSaving}
+                    type="button"
+                    onClick={() => persistProposal('active')}
+                    disabled={isSaving || isLoadingProposal}
                     className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-500 bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Save size={16} strokeWidth={2.2} />
