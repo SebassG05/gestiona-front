@@ -1,21 +1,29 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowDownUp,
+  BadgeEuro,
+  Building2,
+  CalendarDays,
   CheckSquare,
   ChevronDown,
+  CircleUserRound,
+  ExternalLink,
+  FileText,
   FilePlus2,
   Filter,
+  Link as LinkIcon,
+  Mail,
   Plus,
   Search,
   SquarePen,
+  X,
 } from 'lucide-react';
 import PortalSidebar from './PortalSidebar.jsx';
+import { getPortalProposals } from '../services/proposalService.js';
 
 const sheets = ['Propuestas activas', 'Borradores', 'Enviadas'];
-
-const proposals = [];
 
 const statusStyles = {
   'En preparacion': 'bg-amber-50 text-amber-700 border-amber-200',
@@ -39,27 +47,95 @@ const menuButtons = [
 
 const PortalProposalsPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { portalId } = useParams();
-  const [selectedProposalId, setSelectedProposalId] = useState(null);
-  const [activeSheet, setActiveSheet] = useState(sheets[0]);
+  const [proposals, setProposals] = useState([]);
+  const [selectedProposalId, setSelectedProposalId] = useState(location.state?.selectedProposalId || null);
+  const [activeSheet, setActiveSheet] = useState(location.state?.activeSheet || sheets[0]);
   const [searchValue, setSearchValue] = useState('');
-  const selectedProposal = proposals.find((proposal) => proposal.id === selectedProposalId) || null;
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [notice, setNotice] = useState(location.state?.notice || '');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProposals = async () => {
+      setIsLoading(true);
+      setErrorMessage('');
+
+      try {
+        const response = await getPortalProposals(portalId);
+        if (isMounted) {
+          setProposals(response.data || []);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setProposals([]);
+          setErrorMessage(error.response?.data?.message || 'No se pudieron cargar las propuestas.');
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    loadProposals();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [portalId]);
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timeout = window.setTimeout(() => setNotice(''), 3500);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  const selectedProposal = useMemo(
+    () => proposals.find((proposal) => proposal._id === selectedProposalId) || null,
+    [proposals, selectedProposalId]
+  );
 
   const filteredProposals = proposals.filter((proposal) => {
+    const lifecycleStatus = proposal.lifecycleStatus || 'active';
+    const belongsToSheet =
+      (activeSheet === 'Propuestas activas' && lifecycleStatus === 'active') ||
+      (activeSheet === 'Borradores' && lifecycleStatus === 'draft') ||
+      (activeSheet === 'Enviadas' && lifecycleStatus === 'sent');
+
+    if (!belongsToSheet) return false;
+
     const normalizedSearch = searchValue.trim().toLowerCase();
 
     if (!normalizedSearch) return true;
 
     return [
-      proposal.name,
-      proposal.status,
-      proposal.priority,
-      proposal.topic,
-      proposal.keyword,
-      proposal.program,
-      proposal.owner,
-    ].some((field) => field.toLowerCase().includes(normalizedSearch));
+      proposal.nombre,
+      proposal.estado,
+      proposal.prioridad,
+      proposal.tipo,
+      proposal.acronimo,
+      proposal.programa,
+      proposal.responsable?.username,
+      proposal.responsable?.email,
+    ].some((field) => String(field || '').toLowerCase().includes(normalizedSearch));
   });
+
+  const formatDate = (value) => {
+    if (!value) return '-';
+    return new Intl.DateTimeFormat('es-ES').format(new Date(value));
+  };
+
+  const formatCurrency = (value) => {
+    if (value === null || value === undefined) return '-';
+    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
+  };
+
+  const handleSheetChange = (sheet) => {
+    setActiveSheet(sheet);
+    setSelectedProposalId(null);
+  };
 
   return (
     <PortalSidebar>
@@ -98,8 +174,22 @@ const PortalProposalsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-          className="relative z-10 mx-auto max-w-[1600px]"
+          className="relative z-10 w-full"
         >
+          <AnimatePresence>
+            {notice && (
+              <motion.div
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                className="mb-4 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-sm"
+              >
+                <CheckSquare size={18} />
+                {notice}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="flex flex-col items-start gap-5 xl:flex-row">
             <motion.section
               layout
@@ -185,14 +275,14 @@ const PortalProposalsPage = () => {
               </div>
 
               <div className="overflow-x-auto">
-                <div className="min-w-[1120px]">
-                  <div className="grid grid-cols-[48px_1.6fr_1fr_0.8fr_1fr_1.3fr_1fr_0.8fr_1fr_0.7fr_0.9fr] border-b border-orange-100 bg-orange-50/60 px-3 py-2.5 text-[12px] font-semibold uppercase tracking-wide text-black-400 sm:px-5">
+                <div className="min-w-[1240px]">
+                  <div className="grid grid-cols-[56px_1.7fr_1fr_1fr_0.9fr_1fr_1.15fr_1fr_1.15fr_0.9fr_1fr] items-center border-b border-orange-100 bg-orange-50/60 px-4 py-4 text-center text-[11px] font-semibold uppercase tracking-wide text-neutral-700 sm:px-6">
                     <div />
                     <div>Nombre de la propuesta</div>
                     <div>Estado</div>
                     <div>Prioridad</div>
-                    <div>Tematica</div>
-                    <div>Palabra clave</div>
+                    <div>Tipo</div>
+                    <div>Acronimo</div>
                     <div>Programa</div>
                     <div>Deadline</div>
                     <div>Responsable</div>
@@ -200,22 +290,30 @@ const PortalProposalsPage = () => {
                     <div>Entidades clave</div>
                   </div>
 
-                  {filteredProposals.length > 0 ? (
+                  {isLoading ? (
+                    <div className="flex min-h-52 items-center justify-center border-b border-orange-100 bg-white px-6 py-10 text-sm font-semibold text-orange-500">
+                      Cargando propuestas...
+                    </div>
+                  ) : errorMessage ? (
+                    <div className="flex min-h-52 items-center justify-center border-b border-red-100 bg-red-50 px-6 py-10 text-center text-sm font-semibold text-red-600">
+                      {errorMessage}
+                    </div>
+                  ) : filteredProposals.length > 0 ? (
                     filteredProposals.map((proposal) => {
-                      const isSelected = proposal.id === selectedProposalId;
+                      const isSelected = proposal._id === selectedProposalId;
 
                       return (
                         <button
-                          key={proposal.id}
+                          key={proposal._id}
                           type="button"
                           onClick={() =>
-                            setSelectedProposalId((current) => (current === proposal.id ? null : proposal.id))
+                            setSelectedProposalId((current) => (current === proposal._id ? null : proposal._id))
                           }
-                          className={`grid w-full cursor-pointer grid-cols-[48px_1.6fr_1fr_0.8fr_1fr_1.3fr_1fr_0.8fr_1fr_0.7fr_0.9fr] items-stretch border-b border-orange-100 px-3 text-left transition sm:px-5 ${
-                            isSelected ? 'bg-orange-50/70' : 'bg-white hover:bg-orange-50/40'
+                          className={`grid min-h-[76px] w-full cursor-pointer grid-cols-[56px_1.7fr_1fr_1fr_0.9fr_1fr_1.15fr_1fr_1.15fr_0.9fr_1fr] items-center border-b border-orange-100 px-4 text-center transition duration-200 sm:px-6 ${
+                            isSelected ? 'bg-orange-50/80' : 'bg-white hover:bg-orange-50/45'
                           }`}
                         >
-                          <div className="flex items-center justify-center border-r border-orange-100 py-3">
+                          <div className="flex items-center justify-center py-4">
                             <span
                               className={`grid h-5 w-5 place-items-center rounded-md border ${
                                 isSelected
@@ -226,26 +324,28 @@ const PortalProposalsPage = () => {
                               <CheckSquare size={14} strokeWidth={2.4} />
                             </span>
                           </div>
-                          <div className="flex items-center py-3 pr-4 text-sm font-semibold text-orange-950">
-                            {proposal.name}
+                          <div className="flex items-center justify-center px-3 py-4 text-sm font-semibold leading-5 text-orange-950">
+                            {proposal.nombre}
                           </div>
-                          <div className="flex items-center py-3 pr-4">
-                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusStyles[proposal.status]}`}>
-                              {proposal.status}
+                          <div className="flex items-center justify-center px-2 py-4">
+                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusStyles[proposal.estado] || 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
+                              {proposal.estado || 'Sin estado'}
                             </span>
                           </div>
-                          <div className="flex items-center py-3 pr-4">
-                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${priorityStyles[proposal.priority]}`}>
-                              {proposal.priority}
+                          <div className="flex items-center justify-center px-2 py-4">
+                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${priorityStyles[proposal.prioridad] || 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
+                              {proposal.prioridad || 'Sin prioridad'}
                             </span>
                           </div>
-                          <div className="flex items-center py-3 pr-4 text-sm text-orange-700">{proposal.topic}</div>
-                          <div className="flex items-center py-3 pr-4 text-sm text-orange-700">{proposal.keyword}</div>
-                          <div className="flex items-center py-3 pr-4 text-sm text-orange-700">{proposal.program}</div>
-                          <div className="flex items-center py-3 pr-4 text-sm text-orange-700">{proposal.deadline}</div>
-                          <div className="flex items-center py-3 pr-4 text-sm text-orange-700">{proposal.owner}</div>
-                          <div className="flex items-center py-3 pr-4 text-sm text-orange-700">{proposal.contacts}</div>
-                          <div className="flex items-center py-3 text-sm text-orange-700">{proposal.entities}</div>
+                          <div className="flex items-center justify-center px-3 py-4 text-sm leading-5 text-orange-700">{proposal.tipo || '-'}</div>
+                          <div className="flex items-center justify-center px-3 py-4 text-sm leading-5 text-orange-700">{proposal.acronimo || '-'}</div>
+                          <div className="flex items-center justify-center px-3 py-4 text-sm leading-5 text-orange-700">{proposal.programa || '-'}</div>
+                          <div className="flex items-center justify-center px-3 py-4 text-sm leading-5 text-orange-700">{formatDate(proposal.deadlineApertura)}</div>
+                          <div className="flex items-center justify-center px-3 py-4 text-sm leading-5 text-orange-700">
+                            {proposal.responsable?.username || proposal.responsable?.email || '-'}
+                          </div>
+                          <div className="flex items-center justify-center px-3 py-4 text-sm text-orange-700">-</div>
+                          <div className="flex items-center justify-center px-3 py-4 text-sm leading-5 text-orange-700">{proposal.coordinadorLead || '-'}</div>
                         </button>
                       );
                     })
@@ -254,7 +354,11 @@ const PortalProposalsPage = () => {
                       <div>
                         <p className="text-lg font-semibold text-orange-950">Todavia no hay propuestas</p>
                         <p className="mt-2 text-sm text-orange-500">
-                          Cuando conectemos los datos reales o crees una nueva propuesta, apareceran aqui.
+                          {activeSheet === 'Borradores'
+                            ? 'Los borradores que guardes para mas tarde apareceran aqui.'
+                            : activeSheet === 'Enviadas'
+                              ? 'Las propuestas enviadas apareceran aqui.'
+                              : 'Crea una nueva propuesta y aparecera aqui automaticamente.'}
                         </p>
                       </div>
                     </div>
@@ -267,7 +371,7 @@ const PortalProposalsPage = () => {
                   <button
                     key={sheet}
                     type="button"
-                    onClick={() => setActiveSheet(sheet)}
+                    onClick={() => handleSheetChange(sheet)}
                     className={`cursor-pointer rounded-xl border px-4 py-2 text-sm font-semibold transition ${
                       activeSheet === sheet
                         ? 'border-orange-200 bg-orange-50 text-orange-600'
@@ -294,8 +398,89 @@ const PortalProposalsPage = () => {
                   animate={{ opacity: 1, x: 0, width: 340 }}
                   exit={{ opacity: 0, x: 24, width: 0 }}
                   transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                  className="w-full shrink-0 self-start space-y-4 overflow-hidden xl:w-[340px]"
-                />
+                  className="w-full shrink-0 self-start overflow-hidden xl:w-[340px]"
+                >
+                  <div className="w-[340px] overflow-hidden rounded-[28px] border border-orange-100 bg-white shadow-[0_24px_80px_rgba(249,115,22,0.10)]">
+                    <div className="flex items-start justify-between border-b border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 px-5 py-5">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-orange-500">Detalle de propuesta</p>
+                        <h2 className="mt-2 truncate text-xl font-semibold text-orange-950">{selectedProposal.nombre}</h2>
+                        <p className="mt-1 text-xs text-orange-500">
+                          {selectedProposal.proposalId || selectedProposal.acronimo || 'Sin identificador'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProposalId(null)}
+                        className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-xl text-orange-500 transition hover:bg-white"
+                        aria-label="Cerrar detalle"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 p-4">
+                      {selectedProposal.lifecycleStatus === 'draft' && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(
+                              `/dashboard/portal/${portalId}/proposals/${selectedProposal._id}/edit`
+                            )
+                          }
+                          className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-500 bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600"
+                        >
+                          <SquarePen size={17} strokeWidth={2.2} />
+                          Continuar editando
+                        </button>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <DetailCard label="Estado" value={selectedProposal.estado || 'Sin estado'} />
+                        <DetailCard label="Prioridad" value={selectedProposal.prioridad || 'Sin prioridad'} />
+                        <DetailCard label="Programa" value={selectedProposal.programa || '-'} />
+                        <DetailCard label="Deadline" value={formatDate(selectedProposal.deadlineApertura)} />
+                      </div>
+
+                      <DetailSection icon={CircleUserRound} title="Responsable">
+                        {selectedProposal.responsable?.username || selectedProposal.responsable?.email || 'Sin asignar'}
+                      </DetailSection>
+                      <DetailSection icon={Mail} title="Contactos y mails">
+                        {selectedProposal.responsable?.email || 'Sin contactos registrados'}
+                      </DetailSection>
+                      <DetailSection icon={Building2} title="Coordinador / Lead">
+                        {selectedProposal.coordinadorLead || 'Sin definir'}
+                      </DetailSection>
+                      <DetailSection icon={CalendarDays} title="Proxima accion">
+                        {selectedProposal.proximaAccion || 'Sin acciones pendientes'}
+                      </DetailSection>
+                      <DetailSection icon={BadgeEuro} title="Datos economicos">
+                        <div className="space-y-1">
+                          <p>Presupuesto total: {formatCurrency(selectedProposal.presupuestoTotal)}</p>
+                          <p>Presupuesto EVENOR: {formatCurrency(selectedProposal.presupuestoEvenor)}</p>
+                          <p>Balance pendiente: {formatCurrency(selectedProposal.balancePendiente)}</p>
+                        </div>
+                      </DetailSection>
+                      <DetailSection icon={FileText} title="Notas">
+                        {selectedProposal.notas || 'Sin notas adicionales'}
+                      </DetailSection>
+                      {selectedProposal.fuenteUrl && (
+                        <a
+                          href={selectedProposal.fuenteUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex cursor-pointer items-center justify-between rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-700 transition hover:bg-orange-100"
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <LinkIcon size={16} />
+                            Abrir fuente
+                          </span>
+                          <ExternalLink size={15} />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </motion.aside>
               )}
             </AnimatePresence>
           </div>
@@ -304,5 +489,24 @@ const PortalProposalsPage = () => {
     </PortalSidebar>
   );
 };
+
+const DetailCard = ({ label, value }) => (
+  <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-3">
+    <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-500">{label}</p>
+    <p className="mt-2 break-words text-sm font-semibold text-orange-950">{value}</p>
+  </div>
+);
+
+const DetailSection = ({ icon: Icon, title, children }) => (
+  <section className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm">
+    <div className="flex items-center gap-3">
+      <span className="grid h-9 w-9 place-items-center rounded-xl bg-orange-50 text-orange-500">
+        <Icon size={17} strokeWidth={2.1} />
+      </span>
+      <h3 className="text-sm font-semibold text-orange-950">{title}</h3>
+    </div>
+    <div className="mt-3 break-words text-sm leading-6 text-orange-700">{children}</div>
+  </section>
+);
 
 export default PortalProposalsPage;

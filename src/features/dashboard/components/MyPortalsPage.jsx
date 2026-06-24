@@ -180,7 +180,7 @@ const MyPortalsPage = () => {
                     <button
                       type="button"
                       onClick={() => navigate(`/dashboard/portal/${portal.id}`)}
-                      className="text-sm font-medium text-orange-400 transition hover:text-orange-600"
+                      className="text-sm font-medium text-orange-400 transition hover:text-orange-600 cursor-pointer"
                     >
                       Entrar al portal
                     </button>

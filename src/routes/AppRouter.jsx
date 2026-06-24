@@ -115,6 +115,14 @@ const AppRouter = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/dashboard/portal/:portalId/proposals/:proposalId/edit"
+          element={
+            <ProtectedRoute>
+              <CreateProposalPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/aviso-legal" element={<LegalPage />} />
         <Route path="/politica-privacidad" element={<LegalPage />} />
         <Route path="/politica-cookies" element={<LegalPage />} />

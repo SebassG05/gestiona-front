@@ -4,15 +4,21 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
   ArrowRight,
+  Bookmark,
   Check,
   FileText,
   Link as LinkIcon,
+  Lightbulb,
   RotateCcw,
   Save,
 } from 'lucide-react';
 import PortalSidebar from './PortalSidebar.jsx';
 import { getPortalMembers } from '../services/portalService.js';
-import { createProposal } from '../services/proposalService.js';
+import {
+  createProposal,
+  getProposal,
+  updateProposal,
+} from '../services/proposalService.js';
 
 const programOptions = [
   'Horizon Europe',
@@ -112,7 +118,7 @@ const steps = [
 
 const CreateProposalPage = () => {
   const navigate = useNavigate();
-  const { portalId } = useParams();
+  const { portalId, proposalId } = useParams();
   const [formData, setFormData] = useState(initialFormState);
   const [savedMessage, setSavedMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -120,10 +126,12 @@ const CreateProposalPage = () => {
   const [members, setMembers] = useState([]);
   const [membersError, setMembersError] = useState('');
   const [currentStep, setCurrentStep] = useState(0);
+  const [isLoadingProposal, setIsLoadingProposal] = useState(Boolean(proposalId));
 
   const activeStep = steps[currentStep];
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === steps.length - 1;
+  const isEditing = Boolean(proposalId);
   const proposalsPath = `/dashboard/portal/${portalId}/proposals`;
 
   useEffect(() => {
@@ -151,6 +159,65 @@ const CreateProposalPage = () => {
     };
   }, [portalId]);
 
+  useEffect(() => {
+    if (!proposalId) return undefined;
+
+    let isMounted = true;
+
+    const loadProposal = async () => {
+      setIsLoadingProposal(true);
+      setErrorMessage('');
+
+      try {
+        const response = await getProposal({ portalId, proposalId });
+        const proposal = response.data;
+
+        if (isMounted) {
+          setFormData({
+            ...initialFormState,
+            nombre: proposal.nombre === 'Borrador sin titulo' ? '' : proposal.nombre || '',
+            id: proposal.proposalId || '',
+            programa: proposal.programa || '',
+            convocatoria: proposal.convocatoria || '',
+            acronimo: proposal.acronimo || '',
+            tipo: proposal.tipo || '',
+            deadlineApertura: proposal.deadlineApertura
+              ? new Date(proposal.deadlineApertura).toISOString().slice(0, 10)
+              : '',
+            fase: proposal.fase || '',
+            estado: proposal.estado || '',
+            prioridad: proposal.prioridad || '',
+            responsable: proposal.responsable?._id || '',
+            rolEvenor: proposal.rolEvenor || '',
+            coordinadorLead: proposal.coordinadorLead || '',
+            presupuestoTotal: proposal.presupuestoTotal ?? '',
+            presupuestoEvenor: proposal.presupuestoEvenor ?? '',
+            probabilidad: proposal.probabilidad ?? '',
+            valorEsperado: proposal.valorEsperado ?? '',
+            proyectoEjecucionVinculado: proposal.proyectoEjecucionVinculado || '',
+            pagosRecibidosVinculados: proposal.pagosRecibidosVinculados ?? '',
+            balancePendiente: proposal.balancePendiente ?? '',
+            proximaAccion: proposal.proximaAccion || '',
+            fuenteUrl: proposal.fuenteUrl || '',
+            notas: proposal.notas || '',
+          });
+        }
+      } catch (error) {
+        if (isMounted) {
+          setErrorMessage(error.response?.data?.message || 'No se pudo cargar el borrador.');
+        }
+      } finally {
+        if (isMounted) setIsLoadingProposal(false);
+      }
+    };
+
+    loadProposal();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [portalId, proposalId]);
+
   const handleChange = (event) => {
     const { name, value } = event.target;
     setFormData((currentData) => ({ ...currentData, [name]: value }));
@@ -165,10 +232,8 @@ const CreateProposalPage = () => {
     setErrorMessage('');
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (!formData.nombre.trim()) {
+  const persistProposal = async (lifecycleStatus) => {
+    if (lifecycleStatus === 'active' && !formData.nombre.trim()) {
       setCurrentStep(0);
       setErrorMessage('El nombre de la propuesta es obligatorio.');
       return;
@@ -179,13 +244,37 @@ const CreateProposalPage = () => {
     setErrorMessage('');
 
     try {
-      await createProposal({ portalId, data: formData });
-      setSavedMessage('Propuesta guardada correctamente.');
+      const data = { ...formData, lifecycleStatus };
+      const response = isEditing
+        ? await updateProposal({ portalId, proposalId, data })
+        : await createProposal({ portalId, data });
+      const savedId = response.data?.id || response.data?._id || proposalId;
+      const isDraft = lifecycleStatus === 'draft';
+
+      navigate(proposalsPath, {
+        replace: true,
+        state: {
+          selectedProposalId: isDraft ? null : savedId,
+          activeSheet: isDraft ? 'Borradores' : 'Propuestas activas',
+          notice: isDraft
+            ? 'Borrador guardado. Podras continuar editandolo cuando quieras.'
+            : 'Propuesta guardada correctamente.',
+        },
+      });
     } catch (error) {
       setErrorMessage(error.response?.data?.message || 'No se pudo guardar la propuesta.');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    await persistProposal('active');
+  };
+
+  const handleSaveDraft = async () => {
+    await persistProposal('draft');
   };
 
   const goToNextStep = () => {
@@ -333,10 +422,16 @@ const CreateProposalPage = () => {
                 </button>
 
                 <div>
-                  <p className="text-sm font-semibold text-orange-500">Nueva propuesta</p>
-                  <h1 className="mt-2 text-3xl font-semibold text-orange-950 sm:text-4xl">Crear propuesta</h1>
+                  <p className="text-sm font-semibold text-orange-500">
+                    {isEditing ? 'Editar borrador' : 'Nueva propuesta'}
+                  </p>
+                  <h1 className="mt-2 text-3xl font-semibold text-orange-950 sm:text-4xl">
+                    {isEditing ? 'Continuar propuesta' : 'Crear propuesta'}
+                  </h1>
                   <p className="mt-2 text-sm text-orange-500">
-                    Introduce la informacion basica para dar de alta una nueva propuesta.
+                    {isEditing
+                      ? 'Retoma la propuesta donde la dejaste y completa solo lo que necesites.'
+                      : 'Introduce la informacion basica para dar de alta una nueva propuesta.'}
                   </p>
                 </div>
               </div>
@@ -351,8 +446,17 @@ const CreateProposalPage = () => {
                 </button>
                 <button
                   type="button"
+                  onClick={handleSaveDraft}
+                  disabled={isSaving || isLoadingProposal}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Bookmark size={16} strokeWidth={2.2} />
+                  {isSaving ? 'Guardando...' : 'Poner en borrador'}
+                </button>
+                <button
+                  type="button"
                   onClick={resetForm}
-                  disabled={isSaving}
+                  disabled={isSaving || isLoadingProposal}
                   className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-red-100 bg-white px-5 py-3 text-sm font-semibold text-red-500 transition hover:bg-red-50"
                 >
                   <RotateCcw size={16} strokeWidth={2.2} />
@@ -360,11 +464,11 @@ const CreateProposalPage = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving}
+                  disabled={isSaving || isLoadingProposal}
                   className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-500 bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Save size={16} strokeWidth={2.2} />
-                  {isSaving ? 'Guardando...' : 'Guardar propuesta'}
+                  {isSaving ? 'Guardando...' : isEditing ? 'Guardar propuesta' : 'Guardar propuesta'}
                 </button>
               </div>
             </header>
@@ -404,6 +508,11 @@ const CreateProposalPage = () => {
               </div>
 
               <div className="p-5 sm:p-6">
+                {isLoadingProposal && (
+                  <div className="mb-5 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-700">
+                    Cargando borrador...
+                  </div>
+                )}
                 {savedMessage && (
                   <div className="mb-5 flex items-center gap-3 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-950">
                     <Check size={17} strokeWidth={2.2} />
@@ -475,8 +584,17 @@ const CreateProposalPage = () => {
               </footer>
             </section>
 
-            <aside className="mt-5 rounded-[24px] border border-orange-100 bg-white/90 px-5 py-4 text-sm font-semibold text-orange-950 shadow-[0_18px_60px_rgba(249,115,22,0.06)]">
-              Puedes guardar esta propuesta rellenando solo el nombre. El resto de campos son opcionales y puedes completarlos mas adelante.
+            <aside className="mt-5 flex items-start gap-4 rounded-[24px] border border-orange-200 bg-gradient-to-r from-orange-50 via-white to-rose-50 px-5 py-4 shadow-[0_18px_60px_rgba(249,115,22,0.08)]">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-orange-500 shadow-sm ring-1 ring-orange-100">
+                <Lightbulb size={20} strokeWidth={2.2} />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-orange-950">Puedes empezar con lo esencial</p>
+                <p className="mt-1 text-sm leading-6 text-orange-700">
+                  Solo necesitas indicar el nombre para guardar la propuesta. Todos los demas datos son opcionales y
+                  podras completarlos tranquilamente mas adelante.
+                </p>
+              </div>
             </aside>
           </form>
         </motion.main>
