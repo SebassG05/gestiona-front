@@ -152,6 +152,20 @@ const normalizeExcelChoice = (value, options) => {
   return options.find((option) => normalizeExcelHeader(option) === normalizedValue) || String(value).trim();
 };
 
+const normalizePriority = (value) => {
+  const normalizedValue = normalizeExcelHeader(value);
+  const priorityMap = {
+    A: 'Alta',
+    ALTA: 'Alta',
+    B: 'Media',
+    MEDIA: 'Media',
+    C: 'Baja',
+    BAJA: 'Baja',
+  };
+
+  return priorityMap[normalizedValue] || String(value || '').trim();
+};
+
 const statusStyles = {
   Activo: 'border-emerald-300 bg-emerald-100 text-emerald-800',
   Activa: 'border-emerald-300 bg-emerald-100 text-emerald-800',
@@ -330,7 +344,7 @@ const PortalProposalsPage = () => {
 
     return {
       estados: uniqueValues((proposal) => proposal.estado),
-      prioridades: uniqueValues((proposal) => proposal.prioridad),
+      prioridades: uniqueValues((proposal) => normalizePriority(proposal.prioridad)),
       programas: uniqueValues((proposal) => proposal.programa),
       fases: uniqueValues((proposal) => proposal.fase),
       tipos: uniqueValues((proposal) => proposal.tipo),
@@ -378,7 +392,12 @@ const PortalProposalsPage = () => {
 
     if (!matchesSearch) return false;
     if (filters.estado && proposal.estado !== filters.estado) return false;
-    if (filters.prioridad && proposal.prioridad !== filters.prioridad) return false;
+    if (
+      filters.prioridad &&
+      normalizePriority(proposal.prioridad) !== normalizePriority(filters.prioridad)
+    ) {
+      return false;
+    }
     if (filters.programa && proposal.programa !== filters.programa) return false;
     if (filters.fase && proposal.fase !== filters.fase) return false;
     if (filters.tipo && proposal.tipo !== filters.tipo) return false;
@@ -647,7 +666,7 @@ const PortalProposalsPage = () => {
             } else if (field === 'estado') {
               proposal[field] = normalizeExcelChoice(cell, statusSheetOptions);
             } else if (field === 'prioridad') {
-              proposal[field] = normalizeExcelChoice(cell, Object.keys(priorityStyles));
+              proposal[field] = normalizePriority(cell);
             } else {
               proposal[field] = String(cell).trim();
             }
@@ -798,7 +817,7 @@ const PortalProposalsPage = () => {
                   style={{ fontFamily: "'AlfaSlabOne', serif" }}
                   className="mt-3 text-3xl leading-tight text-orange-950 sm:text-4xl"
                 >
-                  Gestion de propuestas
+                  Gestión de propuestas
                 </h1>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-black-500 sm:text-base">
                   Centraliza, organiza y da seguimiento a las propuestas activas de tu organizacion en una vista tipo
@@ -1291,7 +1310,7 @@ const PortalProposalsPage = () => {
                           </div>
                           <div className={`flex items-center justify-center px-2 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
                             <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${priorityStyles[proposal.prioridad] || 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
-                              {proposal.prioridad || 'Sin prioridad'}
+                              {normalizePriority(proposal.prioridad) || 'Sin prioridad'}
                             </span>
                           </div>
                           {tablePreferences.visibleColumns.tipo && (
@@ -1534,7 +1553,10 @@ const PortalProposalsPage = () => {
 
                       <div className="grid grid-cols-2 gap-3">
                         <DetailCard label="Estado" value={selectedProposal.estado || 'Sin estado'} />
-                        <DetailCard label="Prioridad" value={selectedProposal.prioridad || 'Sin prioridad'} />
+                        <DetailCard
+                          label="Prioridad"
+                          value={normalizePriority(selectedProposal.prioridad) || 'Sin prioridad'}
+                        />
                         <DetailCard label="Programa" value={selectedProposal.programa || '-'} />
                         <DetailCard label="Deadline" value={formatDate(selectedProposal.deadlineApertura)} />
                       </div>

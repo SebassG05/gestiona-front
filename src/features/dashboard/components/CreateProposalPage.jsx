@@ -49,6 +49,19 @@ const phaseOptions = [
 const statusOptions = ['En preparacion', 'Enviada', 'En revision', 'Ganada', 'Archivada'];
 const priorityOptions = ['Alta', 'Media', 'Baja'];
 
+const normalizePriority = (value) => {
+  const priorityMap = {
+    A: 'Alta',
+    ALTA: 'Alta',
+    B: 'Media',
+    MEDIA: 'Media',
+    C: 'Baja',
+    BAJA: 'Baja',
+  };
+
+  return priorityMap[String(value || '').trim().toUpperCase()] || value || '';
+};
+
 const proposalFields = [
   { name: 'nombre', label: 'Nombre de la propuesta', type: 'text', placeholder: 'Ej. EcoInnovate 2025', required: true },
   { name: 'id', label: 'ID', type: 'text', placeholder: 'PRP-2025-001' },
@@ -186,7 +199,7 @@ const CreateProposalPage = () => {
               : '',
             fase: proposal.fase || '',
             estado: proposal.estado || '',
-            prioridad: proposal.prioridad || '',
+            prioridad: normalizePriority(proposal.prioridad),
             responsable: proposal.responsable?._id || '',
             rolEvenor: proposal.rolEvenor || '',
             coordinadorLead: proposal.coordinadorLead || '',
@@ -420,9 +433,12 @@ const CreateProposalPage = () => {
                   <p className="text-sm font-semibold text-orange-500">
                     {isEditing ? 'Editar borrador' : 'Nueva propuesta'}
                   </p>
-                  <h1 className="mt-2 text-3xl font-semibold text-orange-950 sm:text-4xl">
-                    {isEditing ? 'Continuar propuesta' : 'Crear propuesta'}
-                  </h1>
+                  <h1
+                  style={{ fontFamily: "'AlfaSlabOne', serif" }}
+                  className="mt-3 text-3xl leading-tight text-orange-950 sm:text-4xl"
+                >
+                  Crear Propuesta
+                </h1>
                   <p className="mt-2 text-sm text-orange-500">
                     {isEditing
                       ? 'Retoma la propuesta donde la dejaste y completa solo lo que necesites.'
