@@ -6,6 +6,7 @@ import DashboardPage from '../features/dashboard/components/DashboardPage.jsx';
 import JoinPortalPage from '../features/dashboard/components/JoinPortalPage.jsx';
 import MyPortalsPage from '../features/dashboard/components/MyPortalsPage.jsx';
 import PortalProjectsPage from '../features/dashboard/components/PortalProjectsPage.jsx';
+import ProposalContactsPage from '../features/dashboard/components/ProposalContactsPage.jsx';
 import PortalProposalsPage from '../features/dashboard/components/PortalProposalsPage.jsx';
 import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspacePage.jsx';
 import CookieBanner from '../features/legal/components/CookieBanner.jsx';
@@ -120,6 +121,14 @@ const AppRouter = () => {
           element={
             <ProtectedRoute>
               <CreateProposalPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/proposals/:proposalId/contacts"
+          element={
+            <ProtectedRoute>
+              <ProposalContactsPage />
             </ProtectedRoute>
           }
         />

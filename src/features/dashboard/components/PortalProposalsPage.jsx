@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import readXlsxFile from 'read-excel-file/browser';
 import {
+  AlertCircle,
   ArrowDownUp,
   BadgeEuro,
   Building2,
@@ -11,7 +13,7 @@ import {
   CircleUserRound,
   ExternalLink,
   FileText,
-  FilePlus2,
+  FileSpreadsheet,
   Filter,
   Link as LinkIcon,
   Mail,
@@ -19,10 +21,17 @@ import {
   Plus,
   Search,
   SquarePen,
+  Upload,
+  UserPlus,
   X,
 } from 'lucide-react';
 import PortalSidebar from './PortalSidebar.jsx';
-import { deleteProposal, getPortalProposals } from '../services/proposalService.js';
+import { getPortalMembers } from '../services/portalService.js';
+import {
+  deleteProposal,
+  getPortalProposals,
+  importProposals,
+} from '../services/proposalService.js';
 
 const baseSheets = ['Propuestas activas', 'Borradores'];
 const statusSheetOptions = ['En preparacion', 'Enviada', 'En revision', 'Ganada', 'Archivada'];
@@ -58,22 +67,117 @@ const sortOptions = [
   { value: 'programa', label: 'Programa' },
 ];
 
+const normalizeExcelHeader = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[€%/()_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+
+const excelColumns = {
+  ID: 'id',
+  'PROPUESTA ID': 'id',
+  PROGRAMA: 'programa',
+  CONVOCATORIA: 'convocatoria',
+  ACRONIMO: 'acronimo',
+  TIPO: 'tipo',
+  DEADLINE: 'deadlineApertura',
+  'DEADLINE APERTURA': 'deadlineApertura',
+  FASE: 'fase',
+  ESTADO: 'estado',
+  PRIORIDAD: 'prioridad',
+  RESPONSABLE: 'responsableLabel',
+  'NOMBRE DE LA PROPUESTA': 'nombre',
+  NOMBRE: 'nombre',
+  'ROL EVENOR': 'rolEvenor',
+  'COORDINADOR LEAD': 'coordinadorLead',
+  'PRESUPUESTO TOTAL': 'presupuestoTotal',
+  'PRESUPUESTO EVENOR': 'presupuestoEvenor',
+  PROBABILIDAD: 'probabilidad',
+  'VALOR ESPERADO': 'valorEsperado',
+  'PROYECTO EJECUCION VINCULADO': 'proyectoEjecucionVinculado',
+  'PAGOS RECIBIDOS VINCULADOS': 'pagosRecibidosVinculados',
+  'BALANCE PENDIENTE': 'balancePendiente',
+  'PROXIMA ACCION': 'proximaAccion',
+  'FUENTE URL': 'fuenteUrl',
+  NOTAS: 'notas',
+  CONTACTOS: null,
+};
+
+const numericExcelFields = new Set([
+  'presupuestoTotal',
+  'presupuestoEvenor',
+  'probabilidad',
+  'valorEsperado',
+  'pagosRecibidosVinculados',
+  'balancePendiente',
+]);
+
+const formatExcelDate = (value) => {
+  if (!value) return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const dateParts = String(value).trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dateParts) {
+    const [, day, month, year] = dateParts;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? '' : parsedDate.toISOString().slice(0, 10);
+};
+
+const parseExcelNumber = (value) => {
+  if (typeof value === 'number') return value;
+
+  const normalizedValue = String(value).trim().replace(/\s/g, '');
+  const decimalValue =
+    normalizedValue.includes(',') && normalizedValue.includes('.')
+      ? normalizedValue.replace(/\./g, '').replace(',', '.')
+      : normalizedValue.replace(',', '.');
+  const parsedValue = Number(decimalValue);
+
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+};
+
+const normalizeExcelChoice = (value, options) => {
+  const normalizedValue = normalizeExcelHeader(value);
+  return options.find((option) => normalizeExcelHeader(option) === normalizedValue) || String(value).trim();
+};
+
 const statusStyles = {
-  'En preparacion': 'bg-amber-50 text-amber-700 border-amber-200',
-  Enviada: 'bg-sky-50 text-sky-700 border-sky-200',
-  'En revision': 'bg-violet-50 text-violet-700 border-violet-200',
-  Ganada: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Archivada: 'bg-slate-100 text-slate-600 border-slate-200',
+  Activo: 'border-emerald-300 bg-emerald-100 text-emerald-800',
+  Activa: 'border-emerald-300 bg-emerald-100 text-emerald-800',
+  'En preparacion': 'border-amber-300 bg-amber-100 text-amber-800',
+  Enviada: 'border-sky-300 bg-sky-100 text-sky-800',
+  'En revision': 'border-violet-300 bg-violet-100 text-violet-800',
+  Vigilancia: 'border-cyan-300 bg-cyan-100 text-cyan-800',
+  Pausado: 'border-slate-300 bg-slate-100 text-slate-700',
+  Pausada: 'border-slate-300 bg-slate-100 text-slate-700',
+  Ganada: 'border-emerald-400 bg-emerald-100 text-emerald-800',
+  Perdida: 'border-red-300 bg-red-100 text-red-700',
+  Archivada: 'border-neutral-300 bg-neutral-100 text-neutral-600',
 };
 
 const priorityStyles = {
-  Alta: 'bg-rose-50 text-rose-600 border-rose-200',
-  Media: 'bg-amber-50 text-amber-700 border-amber-200',
-  Baja: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  A: 'border-red-300 bg-red-100 text-red-700',
+  Alta: 'border-red-300 bg-red-100 text-red-700',
+  B: 'border-amber-300 bg-amber-100 text-amber-800',
+  Media: 'border-amber-300 bg-amber-100 text-amber-800',
+  C: 'border-emerald-300 bg-emerald-100 text-emerald-800',
+  Baja: 'border-emerald-300 bg-emerald-100 text-emerald-800',
 };
 
 const menuButtons = [
   { label: 'Anadir propuesta', icon: Plus, primary: true },
+  { label: 'Importar Excel', icon: FileSpreadsheet, primary: false },
   { label: 'Editar campo', icon: SquarePen, primary: false },
 ];
 
@@ -81,6 +185,7 @@ const PortalProposalsPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { portalId } = useParams();
+  const excelInputRef = useRef(null);
   const sheetsStorageKey = `gestiona:portal:${portalId}:proposal-sheets`;
   const tableStorageKey = `gestiona:portal:${portalId}:proposal-table`;
   const storedSheetPreferences = (() => {
@@ -135,10 +240,14 @@ const PortalProposalsPage = () => {
     }
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [members, setMembers] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
   const [notice, setNotice] = useState(location.state?.notice || '');
   const [proposalToDelete, setProposalToDelete] = useState(null);
   const [isDeletingProposal, setIsDeletingProposal] = useState(false);
+  const [excelPreview, setExcelPreview] = useState(null);
+  const [isReadingExcel, setIsReadingExcel] = useState(false);
+  const [isImportingExcel, setIsImportingExcel] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -163,6 +272,25 @@ const PortalProposalsPage = () => {
     };
 
     loadProposals();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [portalId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMembers = async () => {
+      try {
+        const response = await getPortalMembers(portalId);
+        if (isMounted) setMembers(response.data || []);
+      } catch {
+        if (isMounted) setMembers([]);
+      }
+    };
+
+    loadMembers();
 
     return () => {
       isMounted = false;
@@ -273,7 +401,7 @@ const PortalProposalsPage = () => {
   });
 
   const sortedProposals = useMemo(() => {
-    const priorityOrder = { Alta: 3, Media: 2, Baja: 1 };
+    const priorityOrder = { A: 3, Alta: 3, B: 2, Media: 2, C: 1, Baja: 1 };
     const getSortValue = (proposal) => {
       if (tablePreferences.sortKey === 'prioridad') {
         return priorityOrder[proposal.prioridad] || 0;
@@ -407,6 +535,193 @@ const PortalProposalsPage = () => {
     if (label === 'Editar campo') {
       if (!selectedProposalId) return;
       navigate(`/dashboard/portal/${portalId}/proposals/${selectedProposalId}/edit`);
+      return;
+    }
+
+    if (label === 'Importar Excel') {
+      excelInputRef.current?.click();
+    }
+  };
+
+  const handleExcelSelection = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      setErrorMessage('El archivo debe estar guardado en formato .xlsx.');
+      return;
+    }
+
+    setIsReadingExcel(true);
+    setErrorMessage('');
+
+    try {
+      const workbookSheets = await readXlsxFile(file);
+      const sheetCandidates = workbookSheets
+        .filter(({ data }) => Array.isArray(data) && data.length >= 2)
+        .map(({ sheet, data }) => {
+          const headers = data[0].map(normalizeExcelHeader);
+          const recognizedCount = headers.filter((header) =>
+            Object.prototype.hasOwnProperty.call(excelColumns, header)
+          ).length;
+          const hasProposalIdentifier = headers.includes('NOMBRE DE LA PROPUESTA') || headers.includes('ID');
+
+          return {
+            sheet,
+            data,
+            recognizedCount,
+            hasProposalIdentifier,
+          };
+        })
+        .sort((firstSheet, secondSheet) => {
+          if (firstSheet.hasProposalIdentifier !== secondSheet.hasProposalIdentifier) {
+            return Number(secondSheet.hasProposalIdentifier) - Number(firstSheet.hasProposalIdentifier);
+          }
+
+          return secondSheet.recognizedCount - firstSheet.recognizedCount;
+        });
+
+      const selectedSheet = sheetCandidates[0];
+
+      if (!selectedSheet || selectedSheet.recognizedCount < 2) {
+        setErrorMessage(
+          'No se encontró ninguna hoja con cabeceras de propuestas. Comprueba que incluya ID o NOMBRE DE LA PROPUESTA.'
+        );
+        return;
+      }
+
+      const rows = selectedSheet.data;
+      const headers = rows[0].map(normalizeExcelHeader);
+      const mappedHeaders = headers.map((header) =>
+        Object.prototype.hasOwnProperty.call(excelColumns, header) ? excelColumns[header] : undefined
+      );
+      const hasNameColumn = mappedHeaders.includes('nombre');
+      const hasIdColumn = mappedHeaders.includes('id');
+      const recognizedHeaders = headers.filter((header) =>
+        Object.prototype.hasOwnProperty.call(excelColumns, header)
+      );
+      const ignoredHeaders = headers.filter(
+        (header) => header && !Object.prototype.hasOwnProperty.call(excelColumns, header)
+      );
+
+      if (!hasNameColumn && !hasIdColumn) {
+        setErrorMessage('Falta una columna "ID" o "NOMBRE DE LA PROPUESTA".');
+        return;
+      }
+
+      const memberByLabel = new Map();
+      members.forEach((member) => {
+        [member.username, member.email].filter(Boolean).forEach((label) => {
+          memberByLabel.set(String(label).trim().toLocaleLowerCase('es'), member.id);
+        });
+      });
+
+      const errors = [];
+      const warnings = [];
+      const parsedProposals = rows
+        .slice(1)
+        .map((row, rowIndex) => {
+          const isEmptyRow = row.every((cell) => cell === null || cell === undefined || cell === '');
+          if (isEmptyRow) return null;
+
+          const proposal = { lifecycleStatus: 'active' };
+
+          row.forEach((cell, columnIndex) => {
+            const field = mappedHeaders[columnIndex];
+            if (!field || cell === null || cell === undefined || cell === '') return;
+
+            if (field === 'deadlineApertura') {
+              proposal[field] = formatExcelDate(cell);
+            } else if (field === 'responsableLabel') {
+              const label = String(cell).trim();
+              const memberId = memberByLabel.get(label.toLocaleLowerCase('es'));
+              if (memberId) {
+                proposal.responsable = memberId;
+              } else {
+                warnings.push(`Fila ${rowIndex + 2}: responsable "${label}" no encontrado.`);
+              }
+            } else if (numericExcelFields.has(field)) {
+              const numericValue = parseExcelNumber(cell);
+              if (numericValue !== null) proposal[field] = numericValue;
+            } else if (field === 'estado') {
+              proposal[field] = normalizeExcelChoice(cell, statusSheetOptions);
+            } else if (field === 'prioridad') {
+              proposal[field] = normalizeExcelChoice(cell, Object.keys(priorityStyles));
+            } else {
+              proposal[field] = String(cell).trim();
+            }
+          });
+
+          if (!proposal.nombre && proposal.id) {
+            proposal.nombre = proposal.id;
+          }
+
+          if (!proposal.nombre || proposal.nombre.length < 2) {
+            errors.push(`Fila ${rowIndex + 2}: falta un nombre válido para la propuesta.`);
+          }
+
+          return proposal;
+        })
+        .filter(Boolean);
+
+      if (parsedProposals.length > 500) {
+        errors.push('El archivo supera el límite de 500 propuestas por importación.');
+      }
+      if (parsedProposals.length === 0) {
+        errors.push('El archivo no contiene ninguna propuesta para importar.');
+      }
+
+      if (recognizedHeaders.includes('CONTACTOS')) {
+        warnings.push('La columna CONTACTOS se ha reconocido, pero todavía no se almacena en las propuestas.');
+      }
+      if (!hasNameColumn && hasIdColumn) {
+        warnings.push(
+          `La hoja "${selectedSheet.sheet}" no tiene NOMBRE DE LA PROPUESTA; se utilizará el valor de ID como nombre.`
+        );
+      }
+
+      ignoredHeaders.forEach((header) => {
+        warnings.push(`La columna "${header}" no se reconoce y será ignorada.`);
+      });
+
+      setExcelPreview({
+        fileName: file.name,
+        sheetName: selectedSheet.sheet,
+        proposals: parsedProposals,
+        errors: [...new Set(errors)],
+        warnings: [...new Set(warnings)],
+        recognizedCount: recognizedHeaders.length,
+      });
+    } catch {
+      setErrorMessage('No se pudo leer el Excel. Comprueba que sea un archivo .xlsx válido.');
+    } finally {
+      setIsReadingExcel(false);
+    }
+  };
+
+  const handleImportExcel = async () => {
+    if (!excelPreview || excelPreview.errors.length > 0 || isImportingExcel) return;
+
+    setIsImportingExcel(true);
+    setErrorMessage('');
+
+    try {
+      const response = await importProposals({
+        portalId,
+        proposals: excelPreview.proposals,
+      });
+      const importedCount = response.data?.count || excelPreview.proposals.length;
+
+      setExcelPreview(null);
+      setActiveSheet('Propuestas activas');
+      setSelectedProposalId(null);
+      setNotice(`${importedCount} propuestas importadas correctamente.`);
+      await reloadProposals();
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'No se pudieron importar las propuestas.');
+    } finally {
+      setIsImportingExcel(false);
     }
   };
 
@@ -449,6 +764,14 @@ const PortalProposalsPage = () => {
           transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
           className="relative z-10 w-full"
         >
+          <input
+            ref={excelInputRef}
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={handleExcelSelection}
+            className="hidden"
+          />
+
           <AnimatePresence>
             {notice && (
               <motion.div
@@ -506,7 +829,9 @@ const PortalProposalsPage = () => {
                           }`}
                         >
                           <Icon size={16} strokeWidth={2.2} />
-                          {button.label}
+                          {button.label === 'Importar Excel' && isReadingExcel
+                            ? 'Leyendo Excel...'
+                            : button.label}
                         </button>
                       );
                     })}
@@ -916,13 +1241,23 @@ const PortalProposalsPage = () => {
                       const isSelected = proposal._id === selectedProposalId;
 
                       return (
-                        <button
+                        <div
                           key={proposal._id}
-                          type="button"
                           style={{ gridTemplateColumns: tableGridColumns }}
                           onClick={() =>
                             setSelectedProposalId((current) => (current === proposal._id ? null : proposal._id))
                           }
+                          onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return;
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setSelectedProposalId((current) =>
+                                current === proposal._id ? null : proposal._id
+                              );
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
                           className={`grid w-full cursor-pointer items-center border-b border-orange-100 px-4 text-center transition duration-200 sm:px-6 ${
                             isCompactView ? 'min-h-[56px]' : 'min-h-[76px]'
                           } ${
@@ -969,9 +1304,27 @@ const PortalProposalsPage = () => {
                             {proposal.responsable?.username || proposal.responsable?.email || '-'}
                           </div>
                           {tablePreferences.visibleColumns.contactos && (
-                            <div className={`flex items-center justify-center px-3 text-sm text-orange-700 ${isCompactView ? 'py-2.5' : 'py-4'}`}>-</div>
+                            <div className={`flex items-center justify-center px-3 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  navigate(
+                                    `/dashboard/portal/${portalId}/proposals/${proposal._id}/contacts`
+                                  );
+                                }}
+                                className="group inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-orange-600 transition hover:border-orange-300 hover:bg-orange-50"
+                                aria-label={`Gestionar contactos de ${proposal.nombre}`}
+                                title="Gestionar contactos"
+                              >
+                                <UserPlus size={17} strokeWidth={2.2} />
+                                <span className="min-w-5 rounded-full bg-orange-50 px-1.5 py-0.5 text-xs font-semibold text-orange-600 transition group-hover:bg-white">
+                                  {proposal.contactCount || 0}
+                                </span>
+                              </button>
+                            </div>
                           )}
-                        </button>
+                        </div>
                       );
                     })
                   ) : (
@@ -1231,6 +1584,153 @@ const PortalProposalsPage = () => {
         </motion.main>
 
         <AnimatePresence>
+          {excelPreview && (
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/45 px-4 py-6 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.98 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-orange-100 bg-white shadow-2xl"
+              >
+                <div className="flex items-start justify-between gap-4 border-b border-orange-100 bg-gradient-to-r from-orange-50 to-rose-50 px-6 py-5">
+                  <div className="flex min-w-0 items-start gap-4">
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-orange-500 shadow-sm ring-1 ring-orange-100">
+                      <FileSpreadsheet size={23} strokeWidth={2.1} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
+                        Importacion masiva
+                      </p>
+                      <h2 className="mt-1 truncate text-2xl font-semibold text-orange-950">
+                        Revisar propuestas del Excel
+                      </h2>
+                      <p className="mt-1 truncate text-sm text-orange-600">
+                        {excelPreview.fileName} · Hoja: {excelPreview.sheetName}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExcelPreview(null)}
+                    disabled={isImportingExcel}
+                    className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-xl text-orange-500 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Cerrar importacion"
+                  >
+                    <X size={19} />
+                  </button>
+                </div>
+
+                <div className="gestiona-scrollbar overflow-y-auto p-6">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <ImportSummaryCard
+                      label="Propuestas"
+                      value={excelPreview.proposals.length}
+                      tone="orange"
+                    />
+                    <ImportSummaryCard
+                      label="Columnas reconocidas"
+                      value={excelPreview.recognizedCount}
+                      tone="emerald"
+                    />
+                    <ImportSummaryCard
+                      label="Avisos"
+                      value={excelPreview.warnings.length}
+                      tone={excelPreview.warnings.length ? 'amber' : 'emerald'}
+                    />
+                  </div>
+
+                  {excelPreview.errors.length > 0 && (
+                    <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+                        <AlertCircle size={18} />
+                        Corrige estos errores antes de importar
+                      </div>
+                      <ul className="mt-3 space-y-1.5 text-sm text-red-600">
+                        {excelPreview.errors.slice(0, 8).map((error) => (
+                          <li key={error}>• {error}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {excelPreview.warnings.length > 0 && (
+                    <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-sm font-semibold text-amber-800">Avisos de importacion</p>
+                      <ul className="mt-3 space-y-1.5 text-sm text-amber-700">
+                        {excelPreview.warnings.slice(0, 8).map((warning) => (
+                          <li key={warning}>• {warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="mt-5 overflow-hidden rounded-2xl border border-orange-100">
+                    <div className="grid grid-cols-[1fr_1.8fr_1.2fr_1fr] bg-orange-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-orange-800">
+                      <div>Acronimo</div>
+                      <div>Nombre</div>
+                      <div>Programa</div>
+                      <div>Estado</div>
+                    </div>
+                    {excelPreview.proposals.slice(0, 8).map((proposal, index) => (
+                      <div
+                        key={`${proposal.nombre}-${index}`}
+                        className="grid grid-cols-[1fr_1.8fr_1.2fr_1fr] border-t border-orange-100 px-4 py-3 text-sm text-orange-800"
+                      >
+                        <div className="truncate pr-3">{proposal.acronimo || '-'}</div>
+                        <div className="truncate pr-3 font-semibold text-orange-950">
+                          {proposal.nombre || 'Sin nombre'}
+                        </div>
+                        <div className="truncate pr-3">{proposal.programa || '-'}</div>
+                        <div className="truncate">{proposal.estado || 'Sin estado'}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {excelPreview.proposals.length > 8 && (
+                    <p className="mt-3 text-center text-xs font-semibold text-orange-500">
+                      Y {excelPreview.proposals.length - 8} propuestas mas.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col items-center justify-end gap-3 border-t border-orange-100 px-6 py-4 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setExcelPreview(null)}
+                    disabled={isImportingExcel}
+                    className="w-full cursor-pointer rounded-xl border border-orange-200 bg-white px-5 py-3 text-sm font-semibold text-orange-950 transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleImportExcel}
+                    disabled={
+                      isImportingExcel ||
+                      excelPreview.errors.length > 0 ||
+                      excelPreview.proposals.length === 0
+                    }
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                  >
+                    <Upload size={17} strokeWidth={2.2} />
+                    {isImportingExcel
+                      ? 'Importando...'
+                      : `Importar ${excelPreview.proposals.length} propuestas`}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
           {proposalToDelete && (
             <motion.div
               className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/45 px-4 backdrop-blur-sm"
@@ -1317,5 +1817,20 @@ const FilterSelect = ({ label, value, options, onChange }) => (
     </select>
   </label>
 );
+
+const ImportSummaryCard = ({ label, value, tone }) => {
+  const toneClasses = {
+    orange: 'border-orange-200 bg-orange-50 text-orange-700',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    amber: 'border-amber-200 bg-amber-50 text-amber-700',
+  };
+
+  return (
+    <div className={`rounded-2xl border p-4 ${toneClasses[tone] || toneClasses.orange}`}>
+      <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+};
 
 export default PortalProposalsPage;
