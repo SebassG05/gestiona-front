@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  BriefcaseBusiness,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -35,6 +36,7 @@ const navigationItems = [
   { label: 'Inicio', icon: Home, path: '' },
   { label: 'Proyectos', icon: FolderKanban, path: 'projects' },
   { label: 'Propuestas', icon: FilePenLine, path: 'proposals' },
+  { label: 'Oportunidades', icon: BriefcaseBusiness, path: 'opportunities' },
   { label: 'Equipo', icon: Users, path: 'team' },
   { label: 'Gantt', icon: SquareChartGantt, path: 'gantt' },
   { label: 'Financiacion', icon: Wallet, path: 'funding' },
@@ -103,7 +105,7 @@ const PortalSidebar = ({ children }) => {
         </div>
 
         <nav className="flex-1 space-y-2 px-4 py-3">
-          {navigationItems.map((item, index) => {
+          {navigationItems.map((item) => {
             const to = item.path ? `${basePath}/${item.path}` : basePath;
             const Icon = item.icon;
             const isActive = item.path
@@ -244,7 +246,7 @@ const PortalSidebar = ({ children }) => {
                 </button>
               </div>
               <nav className="space-y-2">
-                {navigationItems.map((item, index) => {
+                {navigationItems.map((item) => {
                   const Icon = item.icon;
 
                   return (
