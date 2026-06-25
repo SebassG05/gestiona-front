@@ -10,6 +10,7 @@ import {
   CalendarDays,
   CheckSquare,
   ChevronDown,
+  Cloud,
   CircleUserRound,
   ExternalLink,
   FileText,
@@ -21,6 +22,10 @@ import {
   Plus,
   Search,
   SquarePen,
+  Table2,
+  RefreshCw,
+  Link2,
+  Unlink,
   Upload,
   UserPlus,
   X,
@@ -28,6 +33,17 @@ import {
 import PortalSidebar from './PortalSidebar.jsx';
 import { getPortalMembers } from '../services/portalService.js';
 import {
+  disconnectLinkedWorkbook,
+  getExcelLinkStatus,
+  getLinkedExcelRows,
+  getMicrosoftConnectUrl,
+  getMicrosoftExcelFiles,
+  getMicrosoftWorksheets,
+  selectLinkedWorkbook,
+  syncLinkedWorkbook,
+} from '../services/portalExcelService.js';
+import {
+  deleteAllProposals,
   deleteProposal,
   getPortalProposals,
   importProposals,
@@ -202,6 +218,7 @@ const PortalProposalsPage = () => {
   const excelInputRef = useRef(null);
   const sheetsStorageKey = `gestiona:portal:${portalId}:proposal-sheets`;
   const tableStorageKey = `gestiona:portal:${portalId}:proposal-table`;
+  const dataSourceStorageKey = `gestiona:portal:${portalId}:proposal-data-source`;
   const storedSheetPreferences = (() => {
     try {
       const storedValue = window.localStorage.getItem(sheetsStorageKey);
@@ -224,6 +241,21 @@ const PortalProposalsPage = () => {
     }
   })();
   const [proposals, setProposals] = useState([]);
+  const [dataSource, setDataSource] = useState(
+    () =>
+      (new URLSearchParams(location.search).has('excel') && 'excel') ||
+      window.localStorage.getItem(dataSourceStorageKey) ||
+      'gestiona'
+  );
+  const [excelStatus, setExcelStatus] = useState(null);
+  const [excelRows, setExcelRows] = useState([]);
+  const [excelFiles, setExcelFiles] = useState([]);
+  const [excelWorksheets, setExcelWorksheets] = useState([]);
+  const [selectedExcelFileId, setSelectedExcelFileId] = useState('');
+  const [selectedWorksheetId, setSelectedWorksheetId] = useState('');
+  const [isExcelLoading, setIsExcelLoading] = useState(false);
+  const [isExcelSyncing, setIsExcelSyncing] = useState(false);
+  const [excelError, setExcelError] = useState('');
   const [selectedProposalId, setSelectedProposalId] = useState(location.state?.selectedProposalId || null);
   const [activeSheet, setActiveSheet] = useState(
     location.state?.activeSheet || storedSheetPreferences?.activeSheet || baseSheets[0]
@@ -259,6 +291,9 @@ const PortalProposalsPage = () => {
   const [notice, setNotice] = useState(location.state?.notice || '');
   const [proposalToDelete, setProposalToDelete] = useState(null);
   const [isDeletingProposal, setIsDeletingProposal] = useState(false);
+  const [areAllProposalsSelected, setAreAllProposalsSelected] = useState(false);
+  const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [excelPreview, setExcelPreview] = useState(null);
   const [isReadingExcel, setIsReadingExcel] = useState(false);
   const [isImportingExcel, setIsImportingExcel] = useState(false);
@@ -330,6 +365,57 @@ const PortalProposalsPage = () => {
   useEffect(() => {
     window.localStorage.setItem(tableStorageKey, JSON.stringify(tablePreferences));
   }, [tablePreferences, tableStorageKey]);
+
+  useEffect(() => {
+    window.localStorage.setItem(dataSourceStorageKey, dataSource);
+  }, [dataSource, dataSourceStorageKey]);
+
+  useEffect(() => {
+    if (dataSource !== 'excel') return undefined;
+    let isMounted = true;
+
+    const loadExcelWorkspace = async () => {
+      setIsExcelLoading(true);
+      setExcelError('');
+      try {
+        const statusResponse = await getExcelLinkStatus(portalId);
+        if (!isMounted) return;
+        let status = statusResponse.data;
+        setExcelStatus(status);
+        if (status.connected) {
+          const filesResponse = await getMicrosoftExcelFiles(portalId);
+          if (isMounted) setExcelFiles(filesResponse.data || []);
+        }
+        if (status.connected && status.fileSelected) {
+          try {
+            const syncResponse = await syncLinkedWorkbook(portalId);
+            status = syncResponse.data.link;
+            if (isMounted) setExcelStatus({ configured: true, connected: true, ...status });
+          } catch (syncError) {
+            if (isMounted) {
+              setExcelError(
+                syncError.response?.data?.message ||
+                  'No se pudo actualizar el Excel. Se muestran los últimos datos guardados.'
+              );
+            }
+          }
+        }
+        const rowsResponse = await getLinkedExcelRows(portalId);
+        if (isMounted) setExcelRows(rowsResponse.data || []);
+      } catch (error) {
+        if (isMounted) {
+          setExcelError(error.response?.data?.message || 'No se pudo cargar la vinculación Excel.');
+        }
+      } finally {
+        if (isMounted) setIsExcelLoading(false);
+      }
+    };
+
+    loadExcelWorkspace();
+    return () => {
+      isMounted = false;
+    };
+  }, [dataSource, portalId]);
 
   const selectedProposal = useMemo(
     () => proposals.find((proposal) => proposal._id === selectedProposalId) || null,
@@ -545,6 +631,40 @@ const PortalProposalsPage = () => {
     }
   };
 
+  const handleToggleAllProposals = () => {
+    if (proposals.length === 0) return;
+
+    setAreAllProposalsSelected((current) => !current);
+    setSelectedProposalId(null);
+  };
+
+  const handleDeleteAllProposals = async () => {
+    if (!areAllProposalsSelected || proposals.length === 0 || isDeletingAll) return;
+
+    setIsDeletingAll(true);
+    setErrorMessage('');
+
+    try {
+      const response = await deleteAllProposals(portalId);
+      const deletedCount = response.data?.deletedProposals ?? proposals.length;
+
+      setProposals([]);
+      setSelectedProposalId(null);
+      setAreAllProposalsSelected(false);
+      setIsDeleteAllOpen(false);
+      setNotice(
+        deletedCount === 1
+          ? 'La propuesta se ha eliminado y la tabla ha quedado limpia.'
+          : `Se han eliminado las ${deletedCount} propuestas y la tabla ha quedado limpia.`
+      );
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'No se pudieron eliminar todas las propuestas.');
+      setIsDeleteAllOpen(false);
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
   const handleMenuAction = (label) => {
     if (label === 'Anadir propuesta') {
       navigate(`/dashboard/portal/${portalId}/proposals/create`);
@@ -559,6 +679,125 @@ const PortalProposalsPage = () => {
 
     if (label === 'Importar Excel') {
       excelInputRef.current?.click();
+    }
+  };
+
+  const handleDataSourceChange = (source) => {
+    setDataSource(source);
+    setSelectedProposalId(null);
+    setAreAllProposalsSelected(false);
+    setIsDeleteAllOpen(false);
+    setIsFilterOpen(false);
+    setIsSortOpen(false);
+    setIsViewOpen(false);
+    setIsSheetMenuOpen(false);
+  };
+
+  const handleMicrosoftConnect = async () => {
+    setExcelError('');
+    try {
+      const response = await getMicrosoftConnectUrl(portalId);
+      window.location.assign(response.data.url);
+    } catch (error) {
+      setExcelError(error.response?.data?.message || 'No se pudo iniciar la conexión con Microsoft.');
+    }
+  };
+
+  const handleExcelFileChange = async (event) => {
+    const itemId = event.target.value;
+    setSelectedExcelFileId(itemId);
+    setSelectedWorksheetId('');
+    setExcelWorksheets([]);
+    if (!itemId) return;
+    const file = excelFiles.find((item) => item.itemId === itemId);
+    if (!file) return;
+
+    setIsExcelLoading(true);
+    setExcelError('');
+    try {
+      const response = await getMicrosoftWorksheets({
+        portalId,
+        driveId: file.driveId,
+        itemId: file.itemId,
+      });
+      setExcelWorksheets(response.data || []);
+      const preferredSheet = (response.data || []).find((sheet) => sheet.name === 'BD_Propuestas');
+      if (preferredSheet) setSelectedWorksheetId(preferredSheet.id);
+    } catch (error) {
+      setExcelError(error.response?.data?.message || 'No se pudieron cargar las hojas del Excel.');
+    } finally {
+      setIsExcelLoading(false);
+    }
+  };
+
+  const reloadLinkedExcel = async () => {
+    const [statusResponse, rowsResponse] = await Promise.all([
+      getExcelLinkStatus(portalId),
+      getLinkedExcelRows(portalId),
+    ]);
+    setExcelStatus(statusResponse.data);
+    setExcelRows(rowsResponse.data || []);
+  };
+
+  const handleLinkAndSync = async () => {
+    const file = excelFiles.find((item) => item.itemId === selectedExcelFileId);
+    const worksheet = excelWorksheets.find((item) => item.id === selectedWorksheetId);
+    if (!file || !worksheet) return;
+
+    setIsExcelSyncing(true);
+    setExcelError('');
+    try {
+      await selectLinkedWorkbook({
+        portalId,
+        data: {
+          driveId: file.driveId,
+          itemId: file.itemId,
+          fileName: file.name,
+          webUrl: file.webUrl,
+          worksheetId: worksheet.id,
+          worksheetName: worksheet.name,
+        },
+      });
+      const response = await syncLinkedWorkbook(portalId);
+      setNotice(`${response.data.count} propuestas sincronizadas desde Excel.`);
+      await reloadLinkedExcel();
+    } catch (error) {
+      setExcelError(error.response?.data?.message || 'No se pudo vincular y sincronizar el Excel.');
+    } finally {
+      setIsExcelSyncing(false);
+    }
+  };
+
+  const handleExcelSync = async () => {
+    setIsExcelSyncing(true);
+    setExcelError('');
+    try {
+      const response = await syncLinkedWorkbook(portalId);
+      setNotice(`${response.data.count} propuestas actualizadas desde Excel.`);
+      await reloadLinkedExcel();
+    } catch (error) {
+      setExcelError(error.response?.data?.message || 'No se pudo sincronizar el Excel.');
+    } finally {
+      setIsExcelSyncing(false);
+    }
+  };
+
+  const handleExcelDisconnect = async () => {
+    setIsExcelLoading(true);
+    setExcelError('');
+    try {
+      await disconnectLinkedWorkbook(portalId);
+      setExcelStatus({ configured: true, connected: false, fileSelected: false });
+      setExcelRows([]);
+      setExcelFiles([]);
+      setExcelWorksheets([]);
+      setSelectedExcelFileId('');
+      setSelectedWorksheetId('');
+      setNotice('Excel desvinculado correctamente.');
+    } catch (error) {
+      setExcelError(error.response?.data?.message || 'No se pudo desvincular el Excel.');
+    } finally {
+      setIsExcelLoading(false);
     }
   };
 
@@ -811,21 +1050,50 @@ const PortalProposalsPage = () => {
               transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
               className="w-full self-start overflow-hidden rounded-[30px] border border-orange-100 bg-white/92 shadow-[0_24px_80px_rgba(249,115,22,0.08)] backdrop-blur"
             >
-              <div className="border-b border-orange-100 px-5 py-5 sm:px-6">
-                <p className="text-sm font-semibold uppercase tracking-wide text-rose-400">Propuestas</p>
-                <h1
-                  style={{ fontFamily: "'AlfaSlabOne', serif" }}
-                  className="mt-3 text-3xl leading-tight text-orange-950 sm:text-4xl"
-                >
-                  Gestión de propuestas
-                </h1>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-black-500 sm:text-base">
-                  Centraliza, organiza y da seguimiento a las propuestas activas de tu organizacion en una vista tipo
-                  hoja con campos editables y detalle lateral.
-                </p>
+              <div className="flex flex-col gap-5 border-b border-orange-100 px-5 py-5 sm:px-6 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-rose-400">Propuestas</p>
+                  <h1
+                    style={{ fontFamily: "'AlfaSlabOne', serif" }}
+                    className="mt-3 text-3xl leading-tight text-orange-950 sm:text-4xl"
+                  >
+                    Gestión de propuestas
+                  </h1>
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-black-500 sm:text-base">
+                    Centraliza, organiza y da seguimiento a las propuestas activas de tu organizacion en una vista tipo
+                    hoja con campos editables y detalle lateral.
+                  </p>
+                </div>
+
+                <div className="inline-flex w-full rounded-2xl border border-orange-100 bg-orange-50/60 p-1.5 sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => handleDataSourceChange('gestiona')}
+                    className={`inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:flex-none ${
+                      dataSource === 'gestiona'
+                        ? 'bg-white text-orange-700 shadow-sm'
+                        : 'text-orange-500 hover:bg-white/70'
+                    }`}
+                  >
+                    <Table2 size={17} strokeWidth={2.2} />
+                    Tabla Gestiona
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDataSourceChange('excel')}
+                    className={`inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:flex-none ${
+                      dataSource === 'excel'
+                        ? 'bg-white text-emerald-700 shadow-sm'
+                        : 'text-orange-500 hover:bg-white/70'
+                    }`}
+                  >
+                    <FileSpreadsheet size={17} strokeWidth={2.2} />
+                    Excel vinculado
+                  </button>
+                </div>
               </div>
 
-              <div className="border-b border-orange-100 px-3 py-3 sm:px-5">
+              <div className={`${dataSource === 'gestiona' ? 'block' : 'hidden'} border-b border-orange-100 px-3 py-3 sm:px-5`}>
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div className="flex flex-wrap gap-3">
                     {menuButtons.map((button) => {
@@ -854,6 +1122,22 @@ const PortalProposalsPage = () => {
                         </button>
                       );
                     })}
+                    <AnimatePresence initial={false}>
+                      {areAllProposalsSelected && proposals.length > 0 && (
+                        <motion.button
+                          type="button"
+                          initial={{ opacity: 0, x: -8, scale: 0.97 }}
+                          animate={{ opacity: 1, x: 0, scale: 1 }}
+                          exit={{ opacity: 0, x: -8, scale: 0.97 }}
+                          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                          onClick={() => setIsDeleteAllOpen(true)}
+                          className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 transition hover:border-red-300 hover:bg-red-100"
+                        >
+                          <Trash2 size={16} strokeWidth={2.2} />
+                          Eliminar todas ({proposals.length})
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -1227,7 +1511,7 @@ const PortalProposalsPage = () => {
                 </AnimatePresence>
               </div>
 
-              <div className="gestiona-scrollbar overflow-x-auto pb-1">
+              <div className={`${dataSource === 'gestiona' ? 'block' : 'hidden'} gestiona-scrollbar overflow-x-auto pb-1`}>
                 <div style={{ minWidth: tableMinWidth }}>
                   <div
                     style={{ gridTemplateColumns: tableGridColumns }}
@@ -1235,7 +1519,34 @@ const PortalProposalsPage = () => {
                       isCompactView ? 'py-3' : 'py-4'
                     }`}
                   >
-                    <div />
+                    <div className="flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={handleToggleAllProposals}
+                        disabled={proposals.length === 0}
+                        className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg transition hover:bg-orange-100 disabled:cursor-default disabled:opacity-40"
+                        aria-label={
+                          areAllProposalsSelected
+                            ? 'Quitar la seleccion de todas las propuestas'
+                            : 'Seleccionar todas las propuestas'
+                        }
+                        title={
+                          areAllProposalsSelected
+                            ? 'Quitar seleccion total'
+                            : `Seleccionar las ${proposals.length} propuestas`
+                        }
+                      >
+                        <span
+                          className={`grid h-5 w-5 place-items-center rounded-md border transition ${
+                            areAllProposalsSelected
+                              ? 'border-orange-500 bg-orange-500 text-white'
+                              : 'border-orange-300 bg-white text-transparent'
+                          }`}
+                        >
+                          <CheckSquare size={14} strokeWidth={2.5} />
+                        </span>
+                      </button>
+                    </div>
                     {tablePreferences.visibleColumns.acronimo && <div>Acronimo</div>}
                     <div>Nombre de la propuesta</div>
                     <div>Programa</div>
@@ -1257,14 +1568,17 @@ const PortalProposalsPage = () => {
                     </div>
                   ) : sortedProposals.length > 0 ? (
                     sortedProposals.map((proposal) => {
-                      const isSelected = proposal._id === selectedProposalId;
+                      const isSelected =
+                        areAllProposalsSelected || proposal._id === selectedProposalId;
 
                       return (
                         <div
                           key={proposal._id}
                           style={{ gridTemplateColumns: tableGridColumns }}
                           onClick={() =>
-                            setSelectedProposalId((current) => (current === proposal._id ? null : proposal._id))
+                            setSelectedProposalId((current) =>
+                              current === proposal._id ? null : proposal._id
+                            )
                           }
                           onKeyDown={(event) => {
                             if (event.target !== event.currentTarget) return;
@@ -1365,7 +1679,7 @@ const PortalProposalsPage = () => {
                 </div>
               </div>
 
-              <div className="border-t border-orange-100 px-3 py-3 sm:px-5">
+              <div className={`${dataSource === 'gestiona' ? 'block' : 'hidden'} border-t border-orange-100 px-3 py-3 sm:px-5`}>
                 <div className="flex flex-wrap items-center gap-2">
                   {baseSheets.map((sheet) => (
                     <button
@@ -1495,6 +1809,235 @@ const PortalProposalsPage = () => {
                   )}
                 </AnimatePresence>
               </div>
+
+              <AnimatePresence mode="wait">
+                {dataSource === 'excel' && (
+                  <motion.div
+                    key="excel-linked-table"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {excelError && (
+                      <div className="border-b border-red-100 bg-red-50 px-5 py-3 text-sm font-semibold text-red-600">
+                        {excelError}
+                      </div>
+                    )}
+
+                    {isExcelLoading && !excelStatus ? (
+                      <div className="grid min-h-72 place-items-center bg-white text-sm font-semibold text-emerald-700">
+                        Cargando conexión con Microsoft...
+                      </div>
+                    ) : !excelStatus?.configured ? (
+                      <ExcelEmptyState
+                        icon={Cloud}
+                        title="Configura Microsoft Entra"
+                        description="La aplicación necesita las credenciales de Microsoft antes de poder conectar OneDrive."
+                        badge="Configuración requerida"
+                      />
+                    ) : !excelStatus?.connected ? (
+                      <div className="grid min-h-80 place-items-center bg-white px-6 py-12 text-center">
+                        <div className="max-w-xl">
+                          <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+                            <Cloud size={29} strokeWidth={2} />
+                          </span>
+                          <h2 className="mt-5 text-2xl font-semibold text-orange-950">
+                            Conecta tu cuenta de Microsoft
+                          </h2>
+                          <p className="mt-3 text-sm leading-6 text-orange-500">
+                            Gestiona-2 solicitará acceso de lectura a tus archivos para que elijas un Excel de
+                            OneDrive y mantengas esta tabla sincronizada.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleMicrosoftConnect}
+                            className="mt-6 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-emerald-600 hover:to-teal-600"
+                          >
+                            <Link2 size={17} />
+                            Conectar con Microsoft
+                          </button>
+                        </div>
+                      </div>
+                    ) : !excelStatus.fileSelected ? (
+                      <div className="bg-white p-5 sm:p-6">
+                        <div className="flex flex-col gap-4 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/60 via-white to-orange-50/50 p-5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-emerald-900">Cuenta conectada</p>
+                              <p className="mt-1 text-xs text-emerald-700">{excelStatus.microsoftAccount}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleExcelDisconnect}
+                              className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-red-100 bg-white px-3 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-50"
+                            >
+                              <Unlink size={15} />
+                              Desconectar
+                            </button>
+                          </div>
+
+                          <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                            <label>
+                              <span className="mb-2 block text-xs font-semibold text-orange-950">
+                                Archivo Excel
+                              </span>
+                              <select
+                                value={selectedExcelFileId}
+                                onChange={handleExcelFileChange}
+                                className="h-12 w-full cursor-pointer rounded-xl border border-orange-100 bg-white px-4 text-sm text-orange-950 outline-none focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
+                              >
+                                <option value="">Seleccionar archivo de OneDrive</option>
+                                {excelFiles.map((file) => (
+                                  <option key={file.itemId} value={file.itemId}>
+                                    {file.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span className="mb-2 block text-xs font-semibold text-orange-950">
+                                Hoja
+                              </span>
+                              <select
+                                value={selectedWorksheetId}
+                                onChange={(event) => setSelectedWorksheetId(event.target.value)}
+                                disabled={!selectedExcelFileId || isExcelLoading}
+                                className="h-12 w-full cursor-pointer rounded-xl border border-orange-100 bg-white px-4 text-sm text-orange-950 outline-none focus:border-orange-300 focus:ring-4 focus:ring-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <option value="">
+                                  {isExcelLoading ? 'Cargando hojas...' : 'Seleccionar hoja'}
+                                </option>
+                                {excelWorksheets.map((sheet) => (
+                                  <option key={sheet.id} value={sheet.id}>
+                                    {sheet.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={handleLinkAndSync}
+                              disabled={!selectedExcelFileId || !selectedWorksheetId || isExcelSyncing}
+                              className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 text-sm font-semibold text-white transition hover:from-emerald-600 hover:to-teal-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Link2 size={17} />
+                              {isExcelSyncing ? 'Vinculando...' : 'Vincular y sincronizar'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-4 border-b border-emerald-100 bg-emerald-50/35 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm">
+                              <FileSpreadsheet size={21} strokeWidth={2.1} />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-emerald-900">
+                                {excelStatus.fileName}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-emerald-700">
+                                Hoja: {excelStatus.worksheetName} · {excelStatus.lastSyncCount} propuestas
+                                {excelStatus.lastSyncedAt
+                                  ? ` · Actualizado ${new Intl.DateTimeFormat('es-ES', {
+                                      dateStyle: 'short',
+                                      timeStyle: 'short',
+                                    }).format(new Date(excelStatus.lastSyncedAt))}`
+                                  : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExcelStatus((current) => ({ ...current, fileSelected: false }))
+                              }
+                              className="cursor-pointer rounded-xl border border-emerald-100 bg-white px-4 py-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                            >
+                              Cambiar archivo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleExcelSync}
+                              disabled={isExcelSyncing}
+                              className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-xs font-semibold text-white transition hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50"
+                            >
+                              <RefreshCw
+                                size={15}
+                                className={isExcelSyncing ? 'animate-spin' : ''}
+                              />
+                              {isExcelSyncing ? 'Sincronizando...' : 'Sincronizar ahora'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleExcelDisconnect}
+                              disabled={isExcelLoading}
+                              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-red-100 bg-white px-4 py-2.5 text-xs font-semibold text-red-500 transition hover:bg-red-50"
+                            >
+                              <Unlink size={15} />
+                              Desvincular
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="gestiona-scrollbar overflow-x-auto">
+                          <div className="min-w-[1050px]">
+                            <div className="grid grid-cols-[1fr_1.7fr_1.2fr_1fr_1fr_0.9fr_1fr_1.1fr] border-b border-orange-100 bg-orange-50/60 px-6 py-4 text-center text-[11px] font-semibold uppercase tracking-wide text-neutral-700">
+                              <div>Acrónimo</div>
+                              <div>Nombre de la propuesta</div>
+                              <div>Programa</div>
+                              <div>Estado</div>
+                              <div>Prioridad</div>
+                              <div>Tipo</div>
+                              <div>Deadline</div>
+                              <div>Responsable</div>
+                            </div>
+                            {excelRows.length ? (
+                              excelRows.map((row) => (
+                                <div
+                                  key={row._id}
+                                  className="grid min-h-[68px] grid-cols-[1fr_1.7fr_1.2fr_1fr_1fr_0.9fr_1fr_1.1fr] items-center border-b border-orange-100 bg-white px-6 text-center text-sm text-orange-700 transition hover:bg-emerald-50/30"
+                                >
+                                  <div>{row.acronimo || '-'}</div>
+                                  <div className="font-semibold text-orange-950">{row.nombre}</div>
+                                  <div>{row.programa || '-'}</div>
+                                  <div>
+                                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusStyles[row.estado] || 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
+                                      {row.estado || 'Sin estado'}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${priorityStyles[row.prioridad] || 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
+                                      {normalizePriority(row.prioridad) || 'Sin prioridad'}
+                                    </span>
+                                  </div>
+                                  <div>{row.tipo || '-'}</div>
+                                  <div>{formatDate(row.deadlineApertura)}</div>
+                                  <div>{row.responsable || '-'}</div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="grid min-h-64 place-items-center bg-white px-6 text-center">
+                                <div>
+                                  <h2 className="text-lg font-semibold text-orange-950">
+                                    La hoja todavía no tiene propuestas sincronizadas
+                                  </h2>
+                                  <p className="mt-2 text-sm text-orange-500">
+                                    Pulsa “Sincronizar ahora” para volver a leer el Excel.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.section>
 
             <AnimatePresence initial={false}>
@@ -1820,6 +2363,66 @@ const PortalProposalsPage = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <AnimatePresence>
+          {isDeleteAllOpen && (
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/45 px-4 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.28, ease: 'easeInOut' }}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+                className="w-full max-w-lg rounded-2xl border border-red-100 bg-white p-6 shadow-2xl"
+              >
+                <div className="flex items-start gap-4">
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-500">
+                    <Trash2 size={22} strokeWidth={2.2} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide text-rose-400">
+                      Limpiar tabla completa
+                    </p>
+                    <h2 className="mt-2 text-2xl font-semibold text-orange-950">
+                      Eliminar las {proposals.length} propuestas
+                    </h2>
+                  </div>
+                </div>
+
+                <p className="mt-5 text-sm leading-6 text-orange-700">
+                  Se eliminaran todas las propuestas del portal, incluidos los borradores, las
+                  propuestas ocultas por filtros y sus contactos. La tabla quedara completamente
+                  vacia y esta accion no se puede deshacer.
+                </p>
+
+                <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteAllOpen(false)}
+                    disabled={isDeletingAll}
+                    className="w-full cursor-pointer rounded-xl border border-orange-200 bg-white px-5 py-3 text-sm font-semibold text-orange-900 transition duration-200 hover:-translate-y-0.5 hover:bg-orange-50 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllProposals}
+                    disabled={isDeletingAll}
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 px-5 py-3 text-sm font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:from-red-600 hover:to-orange-600 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                  >
+                    <Trash2 size={17} strokeWidth={2.2} />
+                    {isDeletingAll ? 'Vaciando tabla...' : 'Eliminar todo definitivamente'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </PortalSidebar>
   );
@@ -1878,5 +2481,20 @@ const ImportSummaryCard = ({ label, value, tone }) => {
     </div>
   );
 };
+
+const ExcelEmptyState = ({ icon: Icon, title, description, badge }) => (
+  <div className="grid min-h-80 place-items-center bg-white px-6 py-12 text-center">
+    <div className="max-w-xl">
+      <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+        <Icon size={29} strokeWidth={2} />
+      </span>
+      <span className="mt-5 inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+        {badge}
+      </span>
+      <h2 className="mt-4 text-2xl font-semibold text-orange-950">{title}</h2>
+      <p className="mt-3 text-sm leading-6 text-orange-500">{description}</p>
+    </div>
+  </div>
+);
 
 export default PortalProposalsPage;

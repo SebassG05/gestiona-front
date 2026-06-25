@@ -38,3 +38,8 @@ export const deleteProposal = async ({ portalId, proposalId }) => {
   );
   return response.data;
 };
+
+export const deleteAllProposals = async (portalId) => {
+  const response = await api.delete(`/portals/${encodeURIComponent(portalId)}/proposals`);
+  return response.data;
+};
