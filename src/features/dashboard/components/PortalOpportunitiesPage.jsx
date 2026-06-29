@@ -21,6 +21,7 @@ import {
   getOpportunityWorkbook,
   getOpportunityWorkbooks,
   importOpportunityWorkbook,
+  searchOpportunityWorkbooks,
 } from '../services/opportunityWorkbookService.js';
 
 const knownHeaders = new Set(
@@ -75,6 +76,55 @@ const displayCell = (value) => {
     if (!Number.isNaN(date.getTime())) return new Intl.DateTimeFormat('es-ES').format(date);
   }
   return String(value);
+};
+
+const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+
+const getResultEmail = (result) => {
+  const headers = result.workbook?.headers || [];
+  const mailColumnIndex = headers.findIndex((header) =>
+    ['EMAIL', 'E MAIL', 'MAIL', 'CORREO'].includes(normalizeHeader(header))
+  );
+
+  if (mailColumnIndex >= 0) {
+    const emailFromColumn = displayCell(result.values?.[mailColumnIndex]).match(emailPattern)?.[0];
+    if (emailFromColumn) return emailFromColumn;
+  }
+
+  return (
+    (result.values || [])
+      .map((value) => displayCell(value))
+      .find((value) => emailPattern.test(value))
+      ?.match(emailPattern)?.[0] || ''
+  );
+};
+
+const copyTextToClipboard = async (text) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const temporaryTextarea = document.createElement('textarea');
+  temporaryTextarea.value = text;
+  temporaryTextarea.setAttribute('readonly', '');
+  temporaryTextarea.style.position = 'fixed';
+  temporaryTextarea.style.opacity = '0';
+  document.body.appendChild(temporaryTextarea);
+  temporaryTextarea.select();
+  document.execCommand('copy');
+  temporaryTextarea.remove();
+};
+
+const getResultPreviewCells = (result) => {
+  const headers = result.workbook?.headers || [];
+  return headers
+    .map((header, index) => ({
+      header,
+      value: displayCell(result.values?.[index]),
+    }))
+    .filter((cell) => !isGeneratedHeader(cell.header) && cell.value !== '-')
+    .slice(0, 5);
 };
 
 const isGeneratedHeader = (header) => /^Columna \d+(?: \(\d+\))?$/i.test(header);
@@ -223,6 +273,10 @@ const PortalOpportunitiesPage = () => {
   const [workbookToDelete, setWorkbookToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCopyMenuOpen, setIsCopyMenuOpen] = useState(false);
+  const [globalSearchValue, setGlobalSearchValue] = useState('');
+  const [globalResults, setGlobalResults] = useState([]);
+  const [isGlobalSearching, setIsGlobalSearching] = useState(false);
+  const [globalSearchError, setGlobalSearchError] = useState('');
 
   const loadWorkbooks = async (preferredWorkbookId = '') => {
     setIsLoading(true);
@@ -302,6 +356,39 @@ const PortalOpportunitiesPage = () => {
     const timeout = window.setTimeout(() => setNotice(''), 3500);
     return () => window.clearTimeout(timeout);
   }, [notice]);
+
+  useEffect(() => {
+    const query = globalSearchValue.trim();
+
+    if (query.length < 2) {
+      return undefined;
+    }
+
+    let isActive = true;
+    const timeout = window.setTimeout(() => {
+      setIsGlobalSearching(true);
+      searchOpportunityWorkbooks({ portalId, query })
+        .then((response) => {
+          if (isActive) setGlobalResults(response.data || []);
+        })
+        .catch((error) => {
+          if (isActive) {
+            setGlobalResults([]);
+            setGlobalSearchError(
+              error.response?.data?.message || 'No se pudo buscar en todos los Excel.'
+            );
+          }
+        })
+        .finally(() => {
+          if (isActive) setIsGlobalSearching(false);
+        });
+    }, 320);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeout);
+    };
+  }, [globalSearchValue, portalId]);
 
   const filteredRows = useMemo(() => {
     const rows = activeWorkbook?.rows || [];
@@ -435,25 +522,38 @@ const PortalOpportunitiesPage = () => {
       .join('\n');
 
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(columnContent);
-      } else {
-        const temporaryTextarea = document.createElement('textarea');
-        temporaryTextarea.value = columnContent;
-        temporaryTextarea.setAttribute('readonly', '');
-        temporaryTextarea.style.position = 'fixed';
-        temporaryTextarea.style.opacity = '0';
-        document.body.appendChild(temporaryTextarea);
-        temporaryTextarea.select();
-        document.execCommand('copy');
-        temporaryTextarea.remove();
-      }
+      await copyTextToClipboard(columnContent);
 
       setNotice(`Columna "${column.header}" copiada al portapapeles.`);
       setIsCopyMenuOpen(false);
     } catch {
       setErrorMessage('No se pudo copiar la columna. Comprueba los permisos del navegador.');
     }
+  };
+
+  const handleCopyGlobalEmail = async (email) => {
+    try {
+      await copyTextToClipboard(email);
+      setNotice(`Mail "${email}" copiado al portapapeles.`);
+    } catch {
+      setErrorMessage('No se pudo copiar el mail. Comprueba los permisos del navegador.');
+    }
+  };
+
+  const handleGlobalSearchChange = (value) => {
+    setGlobalSearchValue(value);
+    setGlobalSearchError('');
+
+    if (value.trim().length < 2) {
+      setGlobalResults([]);
+      setIsGlobalSearching(false);
+    }
+  };
+
+  const handleGlobalResultOpen = (workbookId) => {
+    setGlobalSearchValue('');
+    setGlobalResults([]);
+    handleWorkbookChange(workbookId);
   };
 
   const visibleColumns = useMemo(
@@ -470,6 +570,8 @@ const PortalOpportunitiesPage = () => {
     [filteredRows, visibleColumns]
   );
   const tableMinWidth = Math.max(900, visibleColumns.length * 220);
+  const normalizedGlobalSearch = globalSearchValue.trim();
+  const shouldShowGlobalSearch = normalizedGlobalSearch.length >= 2;
 
   return (
     <PortalSidebar>
@@ -508,15 +610,26 @@ const PortalOpportunitiesPage = () => {
                 onChange={handleFileSelection}
                 className="hidden"
               />
-              <button
-                type="button"
-                onClick={() => excelInputRef.current?.click()}
-                disabled={isReadingFiles}
-                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Upload size={18} />
-                {isReadingFiles ? 'Leyendo Excel...' : 'Importar Excel'}
-              </button>
+              <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[520px]">
+                <label className="flex items-center gap-3 rounded-xl border border-orange-100 bg-white px-4 py-3 shadow-sm">
+                  <Search size={17} className="text-orange-300" />
+                  <input
+                    value={globalSearchValue}
+                    onChange={(event) => handleGlobalSearchChange(event.target.value)}
+                    placeholder="Buscar en todos los Excel importados..."
+                    className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => excelInputRef.current?.click()}
+                  disabled={isReadingFiles}
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Upload size={18} />
+                  {isReadingFiles ? 'Leyendo Excel...' : 'Importar Excel'}
+                </button>
+              </div>
             </header>
 
             <AnimatePresence>
@@ -579,6 +692,109 @@ const PortalOpportunitiesPage = () => {
                 })}
               </div>
             </div>
+
+            <AnimatePresence initial={false}>
+              {shouldShowGlobalSearch && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden border-b border-orange-100"
+                >
+                  <div className="bg-gradient-to-r from-orange-50/75 via-white to-orange-50/50 px-5 py-4">
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-orange-950">
+                          Busqueda global
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-orange-500">
+                          Resultados encontrados en todos los Excel importados del portal.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGlobalSearchValue('');
+                          setGlobalResults([]);
+                        }}
+                        className="inline-flex cursor-pointer items-center gap-2 self-start rounded-xl border border-orange-100 bg-white px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-50"
+                      >
+                        <X size={14} />
+                        Limpiar busqueda
+                      </button>
+                    </div>
+
+                    {isGlobalSearching ? (
+                      <div className="rounded-2xl border border-orange-100 bg-white px-4 py-5 text-sm font-semibold text-orange-500">
+                        Buscando en la biblioteca...
+                      </div>
+                    ) : globalSearchError ? (
+                      <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-5 text-sm font-semibold text-red-600">
+                        {globalSearchError}
+                      </div>
+                    ) : globalResults.length ? (
+                      <div className="grid gap-3 xl:grid-cols-2">
+                        {globalResults.map((result) => {
+                          const previewCells = getResultPreviewCells(result);
+                          const resultEmail = getResultEmail(result);
+
+                          return (
+                            <article
+                              key={result._id}
+                              className="relative rounded-2xl border border-orange-100 bg-white p-4 pb-14 text-left shadow-sm transition hover:border-orange-300 hover:bg-orange-50/70"
+                            >
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-orange-950">
+                                    {result.workbook.name}
+                                  </p>
+                                  <p className="mt-1 text-xs text-orange-500">
+                                    Fila {result.rowNumber} · {result.workbook.sourceFileName}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleGlobalResultOpen(result.workbook._id)}
+                                  className="shrink-0 cursor-pointer rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700 transition hover:bg-orange-200"
+                                >
+                                  Abrir pagina
+                                </button>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {previewCells.map((cell) => (
+                                  <span
+                                    key={`${result._id}-${cell.header}`}
+                                    className="rounded-xl border border-orange-100 bg-orange-50/70 px-3 py-2 text-xs text-orange-900"
+                                  >
+                                    <strong>{cell.header}:</strong> {cell.value}
+                                  </span>
+                                ))}
+                              </div>
+                              {resultEmail && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyGlobalEmail(resultEmail)}
+                                  className="absolute bottom-3 right-3 grid h-9 w-9 cursor-pointer place-items-center rounded-xl border border-orange-100 bg-white text-orange-500 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+                                  title={`Copiar ${resultEmail}`}
+                                  aria-label={`Copiar mail ${resultEmail}`}
+                                >
+                                  <Copy size={16} strokeWidth={2.1} />
+                                </button>
+                              )}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-orange-100 bg-white px-4 py-5 text-sm font-semibold text-orange-500">
+                        No hay coincidencias en los Excel importados.
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {isLoading ? (
               <LoadingState label="Cargando páginas de oportunidades..." />

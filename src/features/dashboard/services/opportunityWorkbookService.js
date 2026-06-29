@@ -15,6 +15,13 @@ export const getOpportunityWorkbook = async ({ portalId, workbookId }) => {
   return response.data;
 };
 
+export const searchOpportunityWorkbooks = async ({ portalId, query }) => {
+  const response = await api.get(`${workbookPath(portalId)}/search`, {
+    params: { q: query },
+  });
+  return response.data;
+};
+
 export const importOpportunityWorkbook = async ({ portalId, data }) => {
   const response = await api.post(`${workbookPath(portalId)}/import`, data);
   return response.data;

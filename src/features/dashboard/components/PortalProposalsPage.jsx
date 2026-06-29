@@ -31,7 +31,6 @@ import {
   X,
 } from 'lucide-react';
 import PortalSidebar from './PortalSidebar.jsx';
-import { getPortalMembers } from '../services/portalService.js';
 import {
   disconnectLinkedWorkbook,
   getExcelLinkStatus,
@@ -182,6 +181,12 @@ const normalizePriority = (value) => {
   return priorityMap[normalizedValue] || String(value || '').trim();
 };
 
+const getResponsibleLabel = (proposal) =>
+  proposal.responsableName ||
+  proposal.responsable?.username ||
+  proposal.responsable?.email ||
+  '';
+
 const statusStyles = {
   Activo: 'border-emerald-300 bg-emerald-100 text-emerald-800',
   Activa: 'border-emerald-300 bg-emerald-100 text-emerald-800',
@@ -286,7 +291,6 @@ const PortalProposalsPage = () => {
     }
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [members, setMembers] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
   const [notice, setNotice] = useState(location.state?.notice || '');
   const [proposalToDelete, setProposalToDelete] = useState(null);
@@ -321,25 +325,6 @@ const PortalProposalsPage = () => {
     };
 
     loadProposals();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [portalId]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadMembers = async () => {
-      try {
-        const response = await getPortalMembers(portalId);
-        if (isMounted) setMembers(response.data || []);
-      } catch {
-        if (isMounted) setMembers([]);
-      }
-    };
-
-    loadMembers();
 
     return () => {
       isMounted = false;
@@ -434,7 +419,8 @@ const PortalProposalsPage = () => {
       programas: uniqueValues((proposal) => proposal.programa),
       fases: uniqueValues((proposal) => proposal.fase),
       tipos: uniqueValues((proposal) => proposal.tipo),
-      responsables: proposals
+      responsables: uniqueValues(getResponsibleLabel),
+      portalResponsables: proposals
         .map((proposal) => proposal.responsable)
         .filter(Boolean)
         .filter(
@@ -472,6 +458,7 @@ const PortalProposalsPage = () => {
         proposal.acronimo,
         proposal.programa,
         proposal.fase,
+        proposal.responsableName,
         proposal.responsable?.username,
         proposal.responsable?.email,
       ].some((field) => String(field || '').toLowerCase().includes(normalizedSearch));
@@ -487,7 +474,7 @@ const PortalProposalsPage = () => {
     if (filters.programa && proposal.programa !== filters.programa) return false;
     if (filters.fase && proposal.fase !== filters.fase) return false;
     if (filters.tipo && proposal.tipo !== filters.tipo) return false;
-    if (filters.responsable && proposal.responsable?._id !== filters.responsable) return false;
+    if (filters.responsable && getResponsibleLabel(proposal) !== filters.responsable) return false;
 
     const proposalDeadline = proposal.deadlineApertura
       ? new Date(proposal.deadlineApertura).setHours(0, 0, 0, 0)
@@ -868,13 +855,6 @@ const PortalProposalsPage = () => {
         return;
       }
 
-      const memberByLabel = new Map();
-      members.forEach((member) => {
-        [member.username, member.email].filter(Boolean).forEach((label) => {
-          memberByLabel.set(String(label).trim().toLocaleLowerCase('es'), member.id);
-        });
-      });
-
       const errors = [];
       const warnings = [];
       const parsedProposals = rows
@@ -892,13 +872,7 @@ const PortalProposalsPage = () => {
             if (field === 'deadlineApertura') {
               proposal[field] = formatExcelDate(cell);
             } else if (field === 'responsableLabel') {
-              const label = String(cell).trim();
-              const memberId = memberByLabel.get(label.toLocaleLowerCase('es'));
-              if (memberId) {
-                proposal.responsable = memberId;
-              } else {
-                warnings.push(`Fila ${rowIndex + 2}: responsable "${label}" no encontrado.`);
-              }
+              proposal.responsableName = String(cell).trim();
             } else if (numericExcelFields.has(field)) {
               const numericValue = parseExcelNumber(cell);
               if (numericValue !== null) proposal[field] = numericValue;
@@ -1301,8 +1275,8 @@ const PortalProposalsPage = () => {
                             >
                               <option value="">Todos</option>
                               {filterOptions.responsables.map((responsable) => (
-                                <option key={responsable._id} value={responsable._id}>
-                                  {responsable.username || responsable.email}
+                                <option key={responsable} value={responsable}>
+                                  {responsable}
                                 </option>
                               ))}
                             </select>
@@ -1609,14 +1583,14 @@ const PortalProposalsPage = () => {
                             </span>
                           </div>
                           {tablePreferences.visibleColumns.acronimo && (
-                            <div className={`flex items-center justify-center px-3 text-sm leading-5 text-orange-700 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
+                            <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
                               {proposal.acronimo || '-'}
                             </div>
                           )}
                           <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
                             {proposal.nombre}
                           </div>
-                          <div className={`flex items-center justify-center px-3 text-sm leading-5 text-orange-700 ${isCompactView ? 'py-2.5' : 'py-4'}`}>{proposal.programa || '-'}</div>
+                          <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>{proposal.programa || '-'}</div>
                           <div className={`flex items-center justify-center px-2 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
                             <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusStyles[proposal.estado] || 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
                               {proposal.estado || 'Sin estado'}
@@ -1628,13 +1602,13 @@ const PortalProposalsPage = () => {
                             </span>
                           </div>
                           {tablePreferences.visibleColumns.tipo && (
-                            <div className={`flex items-center justify-center px-3 text-sm leading-5 text-orange-700 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
+                            <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
                               {proposal.tipo || '-'}
                             </div>
                           )}
-                          <div className={`flex items-center justify-center px-3 text-sm leading-5 text-orange-700 ${isCompactView ? 'py-2.5' : 'py-4'}`}>{formatDate(proposal.deadlineApertura)}</div>
-                          <div className={`flex items-center justify-center px-3 text-sm leading-5 text-orange-700 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
-                            {proposal.responsable?.username || proposal.responsable?.email || '-'}
+                          <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>{formatDate(proposal.deadlineApertura)}</div>
+                          <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
+                            {getResponsibleLabel(proposal) || '-'}
                           </div>
                           {tablePreferences.visibleColumns.contactos && (
                             <div className={`flex items-center justify-center px-3 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
@@ -2105,7 +2079,7 @@ const PortalProposalsPage = () => {
                       </div>
 
                       <DetailSection icon={CircleUserRound} title="Responsable">
-                        {selectedProposal.responsable?.username || selectedProposal.responsable?.email || 'Sin asignar'}
+                        {getResponsibleLabel(selectedProposal) || 'Sin asignar'}
                       </DetailSection>
                       <DetailSection icon={Mail} title="Contactos y mails">
                         <div className="space-y-3">

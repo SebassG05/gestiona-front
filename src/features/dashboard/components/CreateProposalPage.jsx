@@ -96,7 +96,7 @@ const fieldsByName = proposalFields.reduce((fields, field) => {
 const initialFormState = proposalFields.reduce((fields, field) => {
   fields[field.name] = '';
   return fields;
-}, {});
+}, { responsableName: '' });
 
 const steps = [
   {
@@ -201,6 +201,7 @@ const CreateProposalPage = () => {
             estado: proposal.estado || '',
             prioridad: normalizePriority(proposal.prioridad),
             responsable: proposal.responsable?._id || '',
+            responsableName: proposal.responsableName || '',
             rolEvenor: proposal.rolEvenor || '',
             coordinadorLead: proposal.coordinadorLead || '',
             presupuestoTotal: proposal.presupuestoTotal ?? '',
@@ -233,7 +234,11 @@ const CreateProposalPage = () => {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setFormData((currentData) => ({ ...currentData, [name]: value }));
+    setFormData((currentData) => ({
+      ...currentData,
+      [name]: value,
+      ...(name === 'responsable' && value ? { responsableName: '' } : {}),
+    }));
     setSavedMessage('');
     setErrorMessage('');
   };
