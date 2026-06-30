@@ -8,9 +8,10 @@ export const getOpportunityWorkbooks = async (portalId) => {
   return response.data;
 };
 
-export const getOpportunityWorkbook = async ({ portalId, workbookId }) => {
+export const getOpportunityWorkbook = async ({ portalId, workbookId, params = {} }) => {
   const response = await api.get(
-    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}`
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}`,
+    { params }
   );
   return response.data;
 };

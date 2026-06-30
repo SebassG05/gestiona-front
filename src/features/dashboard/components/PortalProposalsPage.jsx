@@ -10,6 +10,8 @@ import {
   CalendarDays,
   CheckSquare,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Cloud,
   CircleUserRound,
   ExternalLink,
@@ -81,6 +83,35 @@ const sortOptions = [
   { value: 'estado', label: 'Estado' },
   { value: 'programa', label: 'Programa' },
 ];
+
+const PROPOSALS_PAGE_SIZE = 25;
+
+const emptyPagination = {
+  page: 1,
+  limit: PROPOSALS_PAGE_SIZE,
+  total: 0,
+  totalPages: 1,
+  hasNextPage: false,
+  hasPreviousPage: false,
+};
+
+const normalizePaginatedResponse = (response) => {
+  if (Array.isArray(response?.data)) {
+    return {
+      items: response.data,
+      pagination: {
+        ...emptyPagination,
+        total: response.data.length,
+        totalPages: 1,
+      },
+    };
+  }
+
+  return {
+    items: response?.data?.items || [],
+    pagination: response?.data?.pagination || emptyPagination,
+  };
+};
 
 const normalizeExcelHeader = (value) =>
   String(value || '')
@@ -301,6 +332,8 @@ const PortalProposalsPage = () => {
   const [excelPreview, setExcelPreview] = useState(null);
   const [isReadingExcel, setIsReadingExcel] = useState(false);
   const [isImportingExcel, setIsImportingExcel] = useState(false);
+  const [proposalPage, setProposalPage] = useState(1);
+  const [proposalPagination, setProposalPagination] = useState(emptyPagination);
 
   useEffect(() => {
     let isMounted = true;
@@ -310,13 +343,22 @@ const PortalProposalsPage = () => {
       setErrorMessage('');
 
       try {
-        const response = await getPortalProposals(portalId);
+        const response = await getPortalProposals(portalId, {
+          page: proposalPage,
+          limit: PROPOSALS_PAGE_SIZE,
+        });
+        const nextData = normalizePaginatedResponse(response);
         if (isMounted) {
-          setProposals(response.data || []);
+          setProposals(nextData.items);
+          setProposalPagination(nextData.pagination);
+          if (nextData.pagination.page !== proposalPage) {
+            setProposalPage(nextData.pagination.page);
+          }
         }
       } catch (error) {
         if (isMounted) {
           setProposals([]);
+          setProposalPagination(emptyPagination);
           setErrorMessage(error.response?.data?.message || 'No se pudieron cargar las propuestas.');
         }
       } finally {
@@ -329,7 +371,7 @@ const PortalProposalsPage = () => {
     return () => {
       isMounted = false;
     };
-  }, [portalId]);
+  }, [portalId, proposalPage]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -560,10 +602,19 @@ const PortalProposalsPage = () => {
     setErrorMessage('');
 
     try {
-      const response = await getPortalProposals(portalId);
-      setProposals(response.data || []);
+      const response = await getPortalProposals(portalId, {
+        page: proposalPage,
+        limit: PROPOSALS_PAGE_SIZE,
+      });
+      const nextData = normalizePaginatedResponse(response);
+      setProposals(nextData.items);
+      setProposalPagination(nextData.pagination);
+      if (nextData.pagination.page !== proposalPage) {
+        setProposalPage(nextData.pagination.page);
+      }
     } catch (error) {
       setProposals([]);
+      setProposalPagination(emptyPagination);
       setErrorMessage(error.response?.data?.message || 'No se pudieron cargar las propuestas.');
     } finally {
       setIsLoading(false);
@@ -573,6 +624,7 @@ const PortalProposalsPage = () => {
   const handleSheetChange = (sheet) => {
     setActiveSheet(sheet);
     setSelectedProposalId(null);
+    setProposalPage(1);
     setIsSheetMenuOpen(false);
   };
 
@@ -593,6 +645,7 @@ const PortalProposalsPage = () => {
   const updateFilter = (field, value) => {
     setFilters((current) => ({ ...current, [field]: value }));
     setSelectedProposalId(null);
+    setProposalPage(1);
   };
 
   const handleDeleteProposal = async () => {
@@ -1119,7 +1172,10 @@ const PortalProposalsPage = () => {
                       <Search size={16} strokeWidth={2.2} className="text-orange-300" />
                       <input
                         value={searchValue}
-                        onChange={(event) => setSearchValue(event.target.value)}
+                        onChange={(event) => {
+                          setSearchValue(event.target.value);
+                          setProposalPage(1);
+                        }}
                         placeholder="Buscar propuestas..."
                         className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
                       />
@@ -1224,7 +1280,10 @@ const PortalProposalsPage = () => {
                             </span>
                             <button
                               type="button"
-                              onClick={() => setFilters(emptyFilters)}
+                              onClick={() => {
+                                setFilters(emptyFilters);
+                                setProposalPage(1);
+                              }}
                               disabled={activeFilterCount === 0}
                               className="cursor-pointer text-xs font-semibold text-rose-500 transition hover:text-rose-600 disabled:cursor-default disabled:opacity-40"
                             >
@@ -1652,6 +1711,15 @@ const PortalProposalsPage = () => {
                   )}
                 </div>
               </div>
+
+              <TablePagination
+                pagination={proposalPagination}
+                onPageChange={(nextPage) => {
+                  setSelectedProposalId(null);
+                  setAreAllProposalsSelected(false);
+                  setProposalPage(nextPage);
+                }}
+              />
 
               <div className={`${dataSource === 'gestiona' ? 'block' : 'hidden'} border-t border-orange-100 px-3 py-3 sm:px-5`}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2420,6 +2488,46 @@ const DetailSection = ({ icon: Icon, title, children }) => (
     <div className="mt-3 break-words text-sm leading-6 text-orange-700">{children}</div>
   </section>
 );
+
+const TablePagination = ({ pagination, onPageChange }) => {
+  const currentPage = pagination?.page || 1;
+  const totalPages = pagination?.totalPages || 1;
+  const total = pagination?.total || 0;
+  const limit = pagination?.limit || PROPOSALS_PAGE_SIZE;
+  const from = total ? (currentPage - 1) * limit + 1 : 0;
+  const to = total ? Math.min(currentPage * limit, total) : 0;
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-orange-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <p className="text-sm font-semibold text-orange-500">
+        {total ? `Mostrando ${from}-${to} de ${total} propuestas` : 'Sin propuestas para mostrar'}
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={!pagination?.hasPreviousPage}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-orange-900 transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-default disabled:opacity-45 disabled:hover:border-orange-100 disabled:hover:bg-white"
+        >
+          <ChevronLeft size={16} />
+          Anterior
+        </button>
+        <span className="rounded-xl bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-600">
+          {currentPage} / {totalPages}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={!pagination?.hasNextPage}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-orange-900 transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-default disabled:opacity-45 disabled:hover:border-orange-100 disabled:hover:bg-white"
+        >
+          Siguiente
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const FilterSelect = ({ label, value, options, onChange }) => (
   <label className="block">

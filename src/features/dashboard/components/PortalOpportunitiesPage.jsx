@@ -6,6 +6,8 @@ import {
   BriefcaseBusiness,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   FileSpreadsheet,
   Search,
@@ -23,6 +25,17 @@ import {
   importOpportunityWorkbook,
   searchOpportunityWorkbooks,
 } from '../services/opportunityWorkbookService.js';
+
+const OPPORTUNITY_ROWS_PAGE_SIZE = 80;
+
+const emptyRowsPagination = {
+  page: 1,
+  limit: OPPORTUNITY_ROWS_PAGE_SIZE,
+  total: 0,
+  totalPages: 1,
+  hasNextPage: false,
+  hasPreviousPage: false,
+};
 
 const knownHeaders = new Set(
   [
@@ -277,6 +290,8 @@ const PortalOpportunitiesPage = () => {
   const [globalResults, setGlobalResults] = useState([]);
   const [isGlobalSearching, setIsGlobalSearching] = useState(false);
   const [globalSearchError, setGlobalSearchError] = useState('');
+  const [workbookPage, setWorkbookPage] = useState(1);
+  const [workbookPagination, setWorkbookPagination] = useState(emptyRowsPagination);
 
   const loadWorkbooks = async (preferredWorkbookId = '') => {
     setIsLoading(true);
@@ -286,6 +301,7 @@ const PortalOpportunitiesPage = () => {
       const response = await getOpportunityWorkbooks(portalId);
       const nextWorkbooks = response.data || [];
       setWorkbooks(nextWorkbooks);
+      if (preferredWorkbookId) setWorkbookPage(1);
       setActiveWorkbookId((current) => {
         const requestedId = preferredWorkbookId || current;
         return nextWorkbooks.some((workbook) => workbook._id === requestedId)
@@ -332,10 +348,20 @@ const PortalOpportunitiesPage = () => {
     if (!activeWorkbookId) return undefined;
 
     let isMounted = true;
+    setIsWorkbookLoading(true);
 
-    getOpportunityWorkbook({ portalId, workbookId: activeWorkbookId })
+    getOpportunityWorkbook({
+      portalId,
+      workbookId: activeWorkbookId,
+      params: { page: workbookPage, limit: OPPORTUNITY_ROWS_PAGE_SIZE },
+    })
       .then((response) => {
-        if (isMounted) setActiveWorkbook(response.data || null);
+        if (!isMounted) return;
+        setActiveWorkbook(response.data || null);
+        setWorkbookPagination(response.data?.pagination || emptyRowsPagination);
+        if (response.data?.pagination?.page && response.data.pagination.page !== workbookPage) {
+          setWorkbookPage(response.data.pagination.page);
+        }
       })
       .catch((error) => {
         if (isMounted) {
@@ -349,7 +375,7 @@ const PortalOpportunitiesPage = () => {
     return () => {
       isMounted = false;
     };
-  }, [activeWorkbookId, portalId]);
+  }, [activeWorkbookId, portalId, workbookPage]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -449,6 +475,8 @@ const PortalOpportunitiesPage = () => {
     if (workbookId === activeWorkbookId) return;
     setIsWorkbookLoading(true);
     setSearchValue('');
+    setWorkbookPage(1);
+    setWorkbookPagination(emptyRowsPagination);
     setActiveWorkbookId(workbookId);
   };
 
@@ -982,6 +1010,14 @@ const PortalOpportunitiesPage = () => {
                       )}
                     </div>
                   </div>
+
+                  <RowsPagination
+                    pagination={workbookPagination}
+                    onPageChange={(nextPage) => {
+                      setSearchValue('');
+                      setWorkbookPage(nextPage);
+                    }}
+                  />
                 </motion.div>
               </AnimatePresence>
             )}
@@ -1045,6 +1081,46 @@ const BackgroundLines = () => (
     />
   </motion.svg>
 );
+
+const RowsPagination = ({ pagination, onPageChange }) => {
+  const currentPage = pagination?.page || 1;
+  const totalPages = pagination?.totalPages || 1;
+  const total = pagination?.total || 0;
+  const limit = pagination?.limit || OPPORTUNITY_ROWS_PAGE_SIZE;
+  const from = total ? (currentPage - 1) * limit + 1 : 0;
+  const to = total ? Math.min(currentPage * limit, total) : 0;
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-orange-100 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm font-semibold text-orange-500">
+        {total ? `Mostrando filas ${from}-${to} de ${total}` : 'Sin filas para mostrar'}
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={!pagination?.hasPreviousPage}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-orange-900 transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-default disabled:opacity-45 disabled:hover:border-orange-100 disabled:hover:bg-white"
+        >
+          <ChevronLeft size={16} />
+          Anterior
+        </button>
+        <span className="rounded-xl bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-600">
+          {currentPage} / {totalPages}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={!pagination?.hasNextPage}
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm font-semibold text-orange-900 transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-default disabled:opacity-45 disabled:hover:border-orange-100 disabled:hover:bg-white"
+        >
+          Siguiente
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const LoadingState = ({ label }) => (
   <div className="grid min-h-80 place-items-center bg-white px-6 text-sm font-semibold text-orange-500">

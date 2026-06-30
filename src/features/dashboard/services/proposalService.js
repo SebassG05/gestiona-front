@@ -1,7 +1,9 @@
 import api from '../../../config/api.js';
 
-export const getPortalProposals = async (portalId) => {
-  const response = await api.get(`/portals/${encodeURIComponent(portalId)}/proposals`);
+export const getPortalProposals = async (portalId, params = {}) => {
+  const response = await api.get(`/portals/${encodeURIComponent(portalId)}/proposals`, {
+    params,
+  });
   return response.data;
 };
 
