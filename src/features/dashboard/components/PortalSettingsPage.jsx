@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Copy, MailPlus, Send, Settings } from 'lucide-react';
+import { Check, Copy, Crown, MailPlus, Send, Settings, Shield, Trash2, Users } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import PortalSidebar from './PortalSidebar.jsx';
-import { invitePortalMembers } from '../services/portalService.js';
+import { getPortalMembers, invitePortalMembers, removePortalMember } from '../services/portalService.js';
 
 const inputClass =
   'w-full rounded-2xl border border-orange-100 bg-white px-4 py-3 text-sm text-orange-950 placeholder-orange-300 outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100';
@@ -19,8 +19,38 @@ const PortalSettingsPage = () => {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [membersError, setMembersError] = useState('');
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+  const [removingMemberId, setRemovingMemberId] = useState('');
 
   const portalJoinReference = useMemo(() => portalId || '', [portalId]);
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
+  const isOwner = members.some((member) => member.role === 'owner' && member.id === currentUser.id);
+
+  const loadMembers = async () => {
+    setIsLoadingMembers(true);
+    setMembersError('');
+
+    try {
+      const response = await getPortalMembers(portalId);
+      setMembers(response.data || []);
+    } catch (err) {
+      setMembersError(err.response?.data?.message || 'No se pudieron cargar los miembros');
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMembers();
+  }, [portalId]);
 
   const addInvite = () => {
     const email = emailInput.trim().toLowerCase();
@@ -80,6 +110,31 @@ const PortalSettingsPage = () => {
       setError(err.response?.data?.message || 'No se pudieron enviar las invitaciones');
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleRemoveMember = async (member) => {
+    if (!member?.id || member.role === 'owner' || member.id === currentUser.id) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Expulsar a ${member.username || member.email} de este portal?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setRemovingMemberId(member.id);
+    setMembersError('');
+
+    try {
+      await removePortalMember({ portalId, memberId: member.id });
+      setMembers((current) => current.filter((item) => item.id !== member.id));
+      setSuccessMessage('Miembro expulsado correctamente');
+    } catch (err) {
+      setMembersError(err.response?.data?.message || 'No se pudo expulsar al miembro');
+    } finally {
+      setRemovingMemberId('');
     }
   };
 
@@ -307,6 +362,89 @@ const PortalSettingsPage = () => {
                 </div>
               </section>
             </aside>
+          </motion.section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.14 }}
+            className="mt-6 rounded-[26px] border border-orange-100 bg-white/92 p-6 shadow-sm sm:p-8"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-orange-50 text-orange-500">
+                  <Users size={22} strokeWidth={2.1} />
+                </span>
+                <div>
+                  <h2 className="text-2xl font-semibold text-orange-950">Personas dentro del portal</h2>
+                  <p className="mt-1 text-sm leading-6 text-orange-600">
+                    Consulta quien tiene acceso a este portal. Solo el propietario puede expulsar miembros.
+                  </p>
+                </div>
+              </div>
+
+              <span className="rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700">
+                {members.length} {members.length === 1 ? 'persona' : 'personas'}
+              </span>
+            </div>
+
+            {membersError && (
+              <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+                {membersError}
+              </p>
+            )}
+
+            <div className="mt-6 grid gap-3 lg:grid-cols-2">
+              {isLoadingMembers ? (
+                <p className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/40 px-4 py-5 text-sm text-orange-300">
+                  Cargando personas del portal...
+                </p>
+              ) : members.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-orange-100 bg-orange-50/40 px-4 py-5 text-sm text-orange-300">
+                  Todavia no hay miembros visibles en este portal.
+                </p>
+              ) : (
+                members.map((member) => {
+                  const canRemove = isOwner && member.role !== 'owner' && member.id !== currentUser.id;
+
+                  return (
+                    <article
+                      key={member.id}
+                      className="flex flex-col gap-4 rounded-2xl border border-orange-100 bg-orange-50/35 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-orange-500 shadow-sm">
+                          {member.role === 'owner' ? <Crown size={19} strokeWidth={2.1} /> : <Shield size={19} strokeWidth={2.1} />}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="truncate text-base font-semibold text-orange-950">
+                              {member.username || member.email}
+                            </h3>
+                            <span className="rounded-full border border-orange-100 bg-white px-2.5 py-1 text-xs font-semibold text-orange-600">
+                              {member.role === 'owner' ? 'Propietario' : 'Miembro'}
+                            </span>
+                          </div>
+                          <p className="mt-1 truncate text-sm text-orange-500">{member.email}</p>
+                        </div>
+                      </div>
+
+                      {canRemove && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(member)}
+                          disabled={removingMemberId === member.id}
+                          className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-500 transition hover:border-red-200 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Trash2 size={16} strokeWidth={2.1} />
+                          {removingMemberId === member.id ? 'Expulsando...' : 'Expulsar'}
+                        </button>
+                      )}
+                    </article>
+                  );
+                })
+              )}
+            </div>
           </motion.section>
         </main>
       </div>

@@ -34,3 +34,10 @@ export const invitePortalMembers = async ({ portalId, invites }) => {
   const response = await api.post(`/portals/${encodeURIComponent(portalId)}/invitations`, { invites });
   return response.data;
 };
+
+export const removePortalMember = async ({ portalId, memberId }) => {
+  const response = await api.delete(
+    `/portals/${encodeURIComponent(portalId)}/members/${encodeURIComponent(memberId)}`
+  );
+  return response.data;
+};
