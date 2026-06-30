@@ -29,3 +29,8 @@ export const getPortalMembers = async (portalId) => {
   const response = await api.get(`/portals/${encodeURIComponent(portalId)}/members`);
   return response.data;
 };
+
+export const invitePortalMembers = async ({ portalId, invites }) => {
+  const response = await api.post(`/portals/${encodeURIComponent(portalId)}/invitations`, { invites });
+  return response.data;
+};

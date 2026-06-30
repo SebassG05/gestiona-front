@@ -7,6 +7,7 @@ import JoinPortalPage from '../features/dashboard/components/JoinPortalPage.jsx'
 import MyPortalsPage from '../features/dashboard/components/MyPortalsPage.jsx';
 import PortalOpportunitiesPage from '../features/dashboard/components/PortalOpportunitiesPage.jsx';
 import PortalProjectsPage from '../features/dashboard/components/PortalProjectsPage.jsx';
+import PortalSettingsPage from '../features/dashboard/components/PortalSettingsPage.jsx';
 import ProposalContactsPage from '../features/dashboard/components/ProposalContactsPage.jsx';
 import PortalProposalsPage from '../features/dashboard/components/PortalProposalsPage.jsx';
 import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspacePage.jsx';
@@ -114,6 +115,14 @@ const AppRouter = () => {
           element={
             <ProtectedRoute>
               <PortalOpportunitiesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/settings"
+          element={
+            <ProtectedRoute>
+              <PortalSettingsPage />
             </ProtectedRoute>
           }
         />
