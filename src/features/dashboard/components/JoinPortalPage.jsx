@@ -106,7 +106,7 @@ const JoinPortalPage = () => {
             Gestiona tu invitacion
           </h1>
           <p className="mt-4 text-sm leading-6 text-orange-500 sm:text-base">
-            Introduce el codigo que recibiste por correo para aceptar o rechazar la invitacion.
+            Introduce el codigo que recibiste por correo o el codigo del portal para unirte.
           </p>
         </motion.header>
 
@@ -117,7 +117,7 @@ const JoinPortalPage = () => {
           className="mt-10 rounded-2xl border border-orange-100 bg-white/90 p-5 shadow-sm sm:p-7"
         >
           <label htmlFor="invite-code" className="mb-2 block text-sm font-medium text-orange-800">
-            Codigo de invitacion
+            Codigo de invitacion o codigo del portal
           </label>
 
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -149,7 +149,11 @@ const JoinPortalPage = () => {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <span className="inline-flex rounded-full border border-orange-200 bg-white px-3 py-1 text-xs font-semibold text-orange-700">
-                    {invitation.status === 'pending' ? 'Pendiente' : invitation.status}
+                    {invitation.accessMode === 'portal-code'
+                      ? 'Codigo de portal'
+                      : invitation.status === 'pending'
+                        ? 'Pendiente'
+                        : invitation.status}
                   </span>
                   <h2 className="mt-4 text-2xl font-semibold text-orange-950">{invitation.portalName}</h2>
                   <p className="mt-2 text-sm text-orange-500">
@@ -175,7 +179,7 @@ const JoinPortalPage = () => {
                 )}
               </div>
 
-              {invitation.status === 'pending' && (
+              {(invitation.status === 'pending' || invitation.accessMode === 'portal-code') && (
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                   <button
                     type="button"
@@ -183,7 +187,11 @@ const JoinPortalPage = () => {
                     disabled={isSubmitting}
                     className="rounded-xl bg-orange-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-900 disabled:opacity-50"
                   >
-                    {isSubmitting ? 'Guardando...' : 'Aceptar invitacion'}
+                    {isSubmitting
+                      ? 'Guardando...'
+                      : invitation.accessMode === 'portal-code'
+                        ? 'Unirme al portal'
+                        : 'Aceptar invitacion'}
                   </button>
                   <button
                     type="button"
@@ -191,7 +199,7 @@ const JoinPortalPage = () => {
                     disabled={isSubmitting}
                     className="rounded-xl border border-orange-200 bg-white px-5 py-3 text-sm font-semibold text-orange-900 transition hover:bg-orange-50 disabled:opacity-50"
                   >
-                    Rechazar invitacion
+                    {invitation.accessMode === 'portal-code' ? 'Cancelar' : 'Rechazar invitacion'}
                   </button>
                 </div>
               )}
