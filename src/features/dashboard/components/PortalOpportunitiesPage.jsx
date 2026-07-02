@@ -5,6 +5,7 @@ import {
   AlertCircle,
   BriefcaseBusiness,
   CheckCircle2,
+  CheckSquare,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -16,8 +17,10 @@ import {
   Plus,
   Search,
   Sheet,
+  Square,
   Trash2,
   Upload,
+  UserPlus,
   X,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
@@ -26,10 +29,13 @@ import {
   createOpportunityWorkbookRow,
   deleteOpportunityWorkbook,
   deleteOpportunityWorkbookRow,
+  getLinkedContactsForOpportunityRows,
   getOpportunityWorkbook,
   getOpportunityWorkbooks,
   importOpportunityWorkbook,
+  linkContactsToOpportunityRow,
   searchOpportunityWorkbooks,
+  unlinkContactFromOpportunityRow,
   updateOpportunityWorkbookRow,
 } from '../services/opportunityWorkbookService.js';
 
@@ -147,6 +153,45 @@ const getResultPreviewCells = (result) => {
     .slice(0, 5);
 };
 
+const getRowValueByHeaderNames = (row, headerNames) => {
+  const headers = row.workbook?.headers || [];
+  const normalizedNames = headerNames.map(normalizeHeader);
+  const index = headers.findIndex((header) =>
+    normalizedNames.includes(normalizeHeader(header))
+  );
+  return index >= 0 ? displayCell(row.values?.[index]) : '';
+};
+
+const buildOpportunityOption = (row) => {
+  const title =
+    getRowValueByHeaderNames(row, [
+      'Topic ID',
+      'Proyecto',
+      'Proyectos',
+      'Empresa',
+      'Destination',
+      'ID',
+    ]) || `Fila ${row.rowNumber}`;
+  const subtitleParts = [
+    getRowValueByHeaderNames(row, ['Nombre', 'Acronimo', 'Acrónimo']),
+    row.workbook?.name,
+    `Fila ${row.rowNumber}`,
+  ].filter(Boolean);
+  const badge =
+    getRowValueByHeaderNames(row, ['Deadline', 'Deadline/Apertura', 'Opening']) ||
+    row.workbook?.sourceFileName ||
+    '';
+
+  return {
+    id: row._id,
+    rowId: row._id,
+    workbookId: row.workbook?._id,
+    title,
+    subtitle: subtitleParts.join(' · '),
+    badge,
+  };
+};
+
 const isGeneratedHeader = (header) => /^Columna \d+(?: \(\d+\))?$/i.test(header);
 
 const primaryGroupHeaders = new Set(['PROYECTO', 'PROYECTOS']);
@@ -159,6 +204,9 @@ const mergeableHeaders = new Set([
 const buildMergedTable = (rows, columns) => {
   const spanByCell = new Map();
   const hiddenCells = new Set();
+  const contactSpanByRow = new Map();
+  const contactHiddenRows = new Set();
+  const contactCountByRow = new Map();
 
   columns.forEach((column, columnPosition) => {
     if (!mergeableHeaders.has(normalizeHeader(column.header))) return;
@@ -190,7 +238,49 @@ const buildMergedTable = (rows, columns) => {
     return Math.max(groupIndex, 0);
   });
 
-  return { spanByCell, hiddenCells, rowGroups };
+  if (projectColumn && rows.length) {
+    let groupStartIndex = 0;
+
+    const closeGroup = (endIndex) => {
+      const rowSpan = endIndex - groupStartIndex + 1;
+      const contactCount = rows
+        .slice(groupStartIndex, endIndex + 1)
+        .reduce((total, row) => total + (Number(row.contactLinkCount) || 0), 0);
+
+      contactSpanByRow.set(groupStartIndex, rowSpan);
+      contactCountByRow.set(groupStartIndex, contactCount);
+
+      for (let rowIndex = groupStartIndex + 1; rowIndex <= endIndex; rowIndex += 1) {
+        contactHiddenRows.add(rowIndex);
+      }
+    };
+
+    rows.forEach((row, rowIndex) => {
+      const startsNewGroup =
+        rowIndex > 0 && isFilled(row.values[projectColumn.sourceIndex]);
+
+      if (startsNewGroup) {
+        closeGroup(rowIndex - 1);
+        groupStartIndex = rowIndex;
+      }
+    });
+
+    closeGroup(rows.length - 1);
+  } else {
+    rows.forEach((row, rowIndex) => {
+      contactSpanByRow.set(rowIndex, 1);
+      contactCountByRow.set(rowIndex, Number(row.contactLinkCount) || 0);
+    });
+  }
+
+  return {
+    spanByCell,
+    hiddenCells,
+    rowGroups,
+    contactSpanByRow,
+    contactHiddenRows,
+    contactCountByRow,
+  };
 };
 
 const makeUniqueHeaders = (rawHeaders, columnCount) => {
@@ -346,6 +436,18 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [rowModal, setRowModal] = useState(null);
   const [rowFormValues, setRowFormValues] = useState([]);
   const [isSavingRow, setIsSavingRow] = useState(false);
+  const [selectedContactRowIds, setSelectedContactRowIds] = useState([]);
+  const [isOpportunityPickerOpen, setIsOpportunityPickerOpen] = useState(false);
+  const [opportunityOptions, setOpportunityOptions] = useState([]);
+  const [opportunitySearchValue, setOpportunitySearchValue] = useState('');
+  const [isLoadingOpportunityOptions, setIsLoadingOpportunityOptions] = useState(false);
+  const [isLinkingContacts, setIsLinkingContacts] = useState(false);
+  const [opportunityPickerError, setOpportunityPickerError] = useState('');
+  const [linkedContactsModal, setLinkedContactsModal] = useState(null);
+  const [linkedContacts, setLinkedContacts] = useState([]);
+  const [isLoadingLinkedContacts, setIsLoadingLinkedContacts] = useState(false);
+  const [linkedContactsError, setLinkedContactsError] = useState('');
+  const [unlinkingContactId, setUnlinkingContactId] = useState('');
 
   const readyDraftContactFilters = useMemo(
     () =>
@@ -414,6 +516,10 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       isMounted = false;
     };
   }, [portalId, workbookCategory, copy.loadListError]);
+
+  useEffect(() => {
+    setSelectedContactRowIds([]);
+  }, [activeWorkbookId, workbookCategory, appliedContactFilters]);
 
   useEffect(() => {
     if (!activeWorkbookId) return undefined;
@@ -514,6 +620,230 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     );
   }, [activeWorkbook, searchValue]);
 
+  const selectedContactRows = useMemo(() => {
+    const selectedIds = new Set(selectedContactRowIds);
+    return (activeWorkbook?.rows || []).filter((row) => selectedIds.has(row._id));
+  }, [activeWorkbook, selectedContactRowIds]);
+
+  const visibleContactRowsAreSelected = useMemo(() => {
+    if (!isContactsLibrary || !filteredRows.length) return false;
+    const selectedIds = new Set(selectedContactRowIds);
+    return filteredRows.every((row) => selectedIds.has(row._id));
+  }, [filteredRows, isContactsLibrary, selectedContactRowIds]);
+
+  const toggleContactRowSelection = (rowId) => {
+    setSelectedContactRowIds((currentIds) =>
+      currentIds.includes(rowId)
+        ? currentIds.filter((currentId) => currentId !== rowId)
+        : [...currentIds, rowId]
+    );
+  };
+
+  const toggleVisibleContactRows = () => {
+    if (!filteredRows.length) return;
+    setSelectedContactRowIds((currentIds) => {
+      const currentSet = new Set(currentIds);
+      const allVisibleAreSelected = filteredRows.every((row) => currentSet.has(row._id));
+
+      if (allVisibleAreSelected) {
+        const visibleIds = new Set(filteredRows.map((row) => row._id));
+        return currentIds.filter((rowId) => !visibleIds.has(rowId));
+      }
+
+      filteredRows.forEach((row) => currentSet.add(row._id));
+      return [...currentSet];
+    });
+  };
+
+  const loadInitialOpportunityOptions = async () => {
+    setIsLoadingOpportunityOptions(true);
+    setOpportunityPickerError('');
+
+    try {
+      const workbooksResponse = await getOpportunityWorkbooks(portalId, {
+        category: 'opportunities',
+      });
+      const opportunityWorkbooks = workbooksResponse.data || [];
+
+      if (!opportunityWorkbooks.length) {
+        setOpportunityOptions([]);
+        return;
+      }
+
+      const workbookResponses = await Promise.all(
+        opportunityWorkbooks.slice(0, 4).map((workbook) =>
+          getOpportunityWorkbook({
+            portalId,
+            workbookId: workbook._id,
+            params: { page: 1, limit: 25, category: 'opportunities' },
+          })
+        )
+      );
+
+      setOpportunityOptions(
+        workbookResponses.flatMap((response) => {
+          const workbook = response.data?.workbook;
+          return (response.data?.rows || []).map((row) => ({ ...row, workbook }));
+        })
+      );
+    } catch (error) {
+      setOpportunityOptions([]);
+      setOpportunityPickerError(
+        error.response?.data?.message || 'No se pudieron cargar las oportunidades.'
+      );
+    } finally {
+      setIsLoadingOpportunityOptions(false);
+    }
+  };
+
+  const openOpportunityPicker = async () => {
+    if (!selectedContactRowIds.length) return;
+    setIsOpportunityPickerOpen(true);
+    setOpportunitySearchValue('');
+    await loadInitialOpportunityOptions();
+  };
+
+  const closeOpportunityPicker = () => {
+    if (isLinkingContacts) return;
+    setIsOpportunityPickerOpen(false);
+    setOpportunitySearchValue('');
+    setOpportunityPickerError('');
+  };
+
+  const linkSelectedContactsToOpportunity = async (opportunity) => {
+    if (!opportunity?.workbookId || !opportunity?.rowId || isLinkingContacts) return;
+    setIsLinkingContacts(true);
+    setOpportunityPickerError('');
+
+    try {
+      const response = await linkContactsToOpportunityRow({
+        portalId,
+        workbookId: opportunity.workbookId,
+        rowId: opportunity.rowId,
+        contactRowIds: selectedContactRowIds,
+      });
+      const linked = response.data?.linked || 0;
+      const skipped = response.data?.skipped || 0;
+      setNotice(
+        skipped
+          ? `${linked} contactos vinculados. ${skipped} ya estaban en esta oportunidad.`
+          : `${linked} contactos vinculados a la oportunidad.`
+      );
+      setSelectedContactRowIds([]);
+      closeOpportunityPicker();
+    } catch (error) {
+      setOpportunityPickerError(
+        error.response?.data?.message || 'No se pudieron vincular los contactos.'
+      );
+    } finally {
+      setIsLinkingContacts(false);
+    }
+  };
+
+  const openLinkedContactsModal = async ({ rows, count }) => {
+    if (!activeWorkbook?.workbook?._id || !rows?.length || !count) return;
+
+    const firstRow = { ...rows[0], workbook: activeWorkbook.workbook };
+    const opportunity = buildOpportunityOption(firstRow);
+
+    setLinkedContactsModal({
+      title: opportunity.title,
+      subtitle: opportunity.subtitle,
+      count,
+    });
+    setLinkedContacts([]);
+    setLinkedContactsError('');
+    setIsLoadingLinkedContacts(true);
+
+    try {
+      const response = await getLinkedContactsForOpportunityRows({
+        portalId,
+        workbookId: activeWorkbook.workbook._id,
+        rowIds: rows.map((row) => row._id),
+      });
+      setLinkedContacts(response.data || []);
+    } catch (error) {
+      setLinkedContactsError(
+        error.response?.data?.message || 'No se pudieron cargar los contactos vinculados.'
+      );
+    } finally {
+      setIsLoadingLinkedContacts(false);
+    }
+  };
+
+  const closeLinkedContactsModal = () => {
+    setLinkedContactsModal(null);
+    setLinkedContacts([]);
+    setLinkedContactsError('');
+    setUnlinkingContactId('');
+  };
+
+  const unlinkLinkedContact = async (linkId) => {
+    if (!activeWorkbook?.workbook?._id || !linkId || unlinkingContactId) return;
+
+    setUnlinkingContactId(linkId);
+    setLinkedContactsError('');
+
+    try {
+      await unlinkContactFromOpportunityRow({
+        portalId,
+        workbookId: activeWorkbook.workbook._id,
+        linkId,
+      });
+      setLinkedContacts((currentContacts) =>
+        currentContacts.filter((contactLink) => contactLink.id !== linkId)
+      );
+      setLinkedContactsModal((currentModal) =>
+        currentModal
+          ? { ...currentModal, count: Math.max((currentModal.count || 1) - 1, 0) }
+          : currentModal
+      );
+      await loadWorkbooks(activeWorkbook.workbook._id);
+    } catch (error) {
+      setLinkedContactsError(
+        error.response?.data?.message || 'No se pudo desvincular el contacto.'
+      );
+    } finally {
+      setUnlinkingContactId('');
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpportunityPickerOpen) return undefined;
+    const query = opportunitySearchValue.trim();
+
+    if (query.length < 2) {
+      return undefined;
+    }
+
+    let isActive = true;
+    const timeout = window.setTimeout(() => {
+      setIsLoadingOpportunityOptions(true);
+      setOpportunityPickerError('');
+
+      searchOpportunityWorkbooks({ portalId, query, category: 'opportunities' })
+        .then((response) => {
+          if (isActive) setOpportunityOptions(response.data || []);
+        })
+        .catch((error) => {
+          if (isActive) {
+            setOpportunityOptions([]);
+            setOpportunityPickerError(
+              error.response?.data?.message || 'No se pudieron buscar oportunidades.'
+            );
+          }
+        })
+        .finally(() => {
+          if (isActive) setIsLoadingOpportunityOptions(false);
+        });
+    }, 300);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeout);
+    };
+  }, [isOpportunityPickerOpen, opportunitySearchValue, portalId]);
+
   const handleFileSelection = async (event) => {
     const files = [...(event.target.files || [])];
     event.target.value = '';
@@ -565,6 +895,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     setAppliedContactFilters([]);
     setWorkbookPage(1);
     setWorkbookPagination(emptyRowsPagination);
+    setSelectedContactRowIds([]);
     setActiveWorkbookId(workbookId);
   };
 
@@ -789,7 +1120,10 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     () => buildMergedTable(filteredRows, visibleColumns),
     [filteredRows, visibleColumns]
   );
-  const tableMinWidth = Math.max(900, visibleColumns.length * 220 + (isContactsLibrary ? 96 : 0));
+  const tableMinWidth = Math.max(
+    900,
+    visibleColumns.length * 220 + (isContactsLibrary ? 136 : 160)
+  );
   const normalizedGlobalSearch = globalSearchValue.trim();
   const shouldShowGlobalSearch = normalizedGlobalSearch.length >= 2;
 
@@ -1069,6 +1403,16 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                           Anadir contacto
                         </button>
                       )}
+                      {isContactsLibrary && selectedContactRowIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={openOpportunityPicker}
+                          className="inline-flex h-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600"
+                        >
+                          <UserPlus size={16} strokeWidth={2.1} />
+                          Anadir a oportunidad ({selectedContactRowIds.length})
+                        </button>
+                      )}
                       {isContactsLibrary && (
                         <button
                           type="button"
@@ -1294,8 +1638,25 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                           <thead>
                             <tr className="bg-orange-500 text-center text-xs font-semibold uppercase tracking-wide text-white">
                               {isContactsLibrary && (
-                                <th className="sticky left-0 z-10 w-24 border border-white/25 bg-orange-500 px-3 py-3">
-                                  Gestion
+                                <th className="sticky left-0 z-10 w-32 border border-white/25 bg-orange-500 px-3 py-3">
+                                  <button
+                                    type="button"
+                                    onClick={toggleVisibleContactRows}
+                                    disabled={!filteredRows.length}
+                                    className="mx-auto inline-flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-white/10 disabled:cursor-default disabled:opacity-50"
+                                    title={
+                                      visibleContactRowsAreSelected
+                                        ? 'Quitar seleccion visible'
+                                        : 'Seleccionar contactos visibles'
+                                    }
+                                  >
+                                    {visibleContactRowsAreSelected ? (
+                                      <CheckSquare size={15} />
+                                    ) : (
+                                      <Square size={15} />
+                                    )}
+                                    Gestion
+                                  </button>
                                 </th>
                               )}
                               {visibleColumns.map((column) => (
@@ -1305,7 +1666,12 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                 >
                                   {column.header}
                                 </th>
-                              ))}
+                                  ))}
+                              {!isContactsLibrary && (
+                                <th className="w-40 border border-white/25 px-4 py-3">
+                                  Contactos
+                                </th>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
@@ -1320,8 +1686,21 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                   }`}
                                 >
                                   {isContactsLibrary && (
-                                    <td className="sticky left-0 z-10 w-24 border border-orange-100 bg-inherit px-2 py-3 align-middle">
-                                      <div className="flex justify-center gap-1.5 opacity-70 transition duration-200 group-hover:opacity-100">
+                                    <td className="sticky left-0 z-10 w-32 border border-orange-100 bg-inherit px-2 py-3 align-middle">
+                                      <div className="flex items-center justify-center gap-2 opacity-80 transition duration-200 group-hover:opacity-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleContactRowSelection(row._id)}
+                                          className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg border border-orange-100 bg-white/90 text-orange-600 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 hover:shadow"
+                                          title="Seleccionar contacto"
+                                          aria-label="Seleccionar contacto"
+                                        >
+                                          {selectedContactRowIds.includes(row._id) ? (
+                                            <CheckSquare size={15} strokeWidth={2.2} />
+                                          ) : (
+                                            <Square size={15} strokeWidth={2.2} />
+                                          )}
+                                        </button>
                                         <button
                                           type="button"
                                           onClick={() => openEditRowModal(row)}
@@ -1368,6 +1747,50 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                       </td>
                                     );
                                   })}
+                                  {!isContactsLibrary &&
+                                    !mergedTable.contactHiddenRows.has(rowIndex) && (
+                                      <td
+                                        rowSpan={mergedTable.contactSpanByRow.get(rowIndex) || 1}
+                                        className="border border-orange-100 px-4 py-3 align-middle"
+                                      >
+                                        <div className="flex h-full min-h-14 items-center justify-center">
+                                          {(() => {
+                                            const contactCount =
+                                              mergedTable.contactCountByRow.get(rowIndex) || 0;
+                                            const rowSpan =
+                                              mergedTable.contactSpanByRow.get(rowIndex) || 1;
+                                            const groupedRows = filteredRows.slice(
+                                              rowIndex,
+                                              rowIndex + rowSpan
+                                            );
+
+                                            return contactCount > 0 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  openLinkedContactsModal({
+                                                    rows: groupedRows,
+                                                    count: contactCount,
+                                                  })
+                                                }
+                                                className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-orange-100 bg-white px-3 py-1.5 text-xs font-semibold text-orange-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-800 hover:shadow-md"
+                                                title="Ver contactos vinculados"
+                                              >
+                                                <UserPlus size={14} />
+                                                {contactCount}
+                                              </button>
+                                            ) : (
+                                              <span
+                                                className="inline-flex items-center justify-center rounded-full border border-orange-100 bg-white px-3 py-1.5 text-orange-300 shadow-sm"
+                                                title="Sin contactos vinculados"
+                                              >
+                                                <UserPlus size={14} />
+                                              </span>
+                                            );
+                                          })()}
+                                        </div>
+                                      </td>
+                                    )}
                                 </tr>
                               );
                             })}
@@ -1441,6 +1864,36 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               isDeleting={isDeleting}
               onCancel={() => setWorkbookToDelete(null)}
               onConfirm={handleDelete}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isOpportunityPickerOpen && (
+            <OpportunityPickerModal
+              selectedCount={selectedContactRowIds.length}
+              opportunities={opportunityOptions}
+              searchValue={opportunitySearchValue}
+              isLoading={isLoadingOpportunityOptions}
+              isLinking={isLinkingContacts}
+              errorMessage={opportunityPickerError}
+              onSearchChange={setOpportunitySearchValue}
+              onCancel={closeOpportunityPicker}
+              onSelect={linkSelectedContactsToOpportunity}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {linkedContactsModal && (
+            <LinkedContactsModal
+              meta={linkedContactsModal}
+              contacts={linkedContacts}
+              isLoading={isLoadingLinkedContacts}
+              unlinkingContactId={unlinkingContactId}
+              errorMessage={linkedContactsError}
+              onCancel={closeLinkedContactsModal}
+              onUnlink={unlinkLinkedContact}
             />
           )}
         </AnimatePresence>
@@ -1743,6 +2196,365 @@ const ContactRowModal = ({ mode, columns, values, isSaving, onChange, onCancel, 
         >
           {mode === 'edit' ? <Edit3 size={17} /> : <Plus size={17} />}
           {isSaving ? 'Guardando...' : mode === 'edit' ? 'Guardar cambios' : 'Anadir contacto'}
+        </button>
+      </div>
+    </motion.div>
+  </motion.div>
+);
+
+const LinkedContactsBackground = () => (
+  <>
+    <motion.div
+      className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_18%_28%,rgba(251,146,60,0.12),transparent_26%),radial-gradient(circle_at_82%_18%,rgba(244,63,94,0.10),transparent_24%),radial-gradient(circle_at_70%_82%,rgba(251,146,60,0.09),transparent_30%)]"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.7, ease: 'easeOut' }}
+      aria-hidden="true"
+    />
+    <motion.svg
+      className="pointer-events-none absolute inset-0 z-0 h-full w-full select-none"
+      viewBox="0 0 1440 900"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <motion.path
+        d="M-120 145 C 160 40, 400 260, 680 160 S 1100 20, 1540 190"
+        fill="none"
+        stroke="#fb923c"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 0.24 }}
+        transition={{ duration: 1.55, ease: 'easeInOut' }}
+      />
+      <motion.path
+        d="M-160 450 C 130 360, 420 545, 710 425 S 1110 310, 1550 485"
+        fill="none"
+        stroke="#fb7185"
+        strokeWidth="2"
+        strokeLinecap="round"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 0.16 }}
+        transition={{ duration: 1.75, ease: 'easeInOut', delay: 0.08 }}
+      />
+      <motion.path
+        d="M-120 730 C 170 620, 470 820, 770 665 S 1110 500, 1540 640"
+        fill="none"
+        stroke="#fb923c"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 0.18 }}
+        transition={{ duration: 1.95, ease: 'easeInOut', delay: 0.14 }}
+      />
+    </motion.svg>
+  </>
+);
+
+const LinkedContactsModal = ({
+  meta,
+  contacts,
+  isLoading,
+  unlinkingContactId,
+  errorMessage,
+  onCancel,
+  onUnlink,
+}) => {
+  const columns = useMemo(() => {
+    const columnMap = new Map();
+
+    contacts.forEach(({ contact }) => {
+      (contact?.headers || []).forEach((header, sourceIndex) => {
+        const label = String(header || `Columna ${sourceIndex + 1}`).trim();
+        if (!label || isGeneratedHeader(label)) return;
+
+        const key = normalizeHeader(label);
+        if (!columnMap.has(key)) {
+          columnMap.set(key, { key, label, sourceIndexByWorkbook: new Map() });
+        }
+        columnMap.get(key).sourceIndexByWorkbook.set(contact.workbookId || 'default', sourceIndex);
+      });
+    });
+
+    return [...columnMap.values()];
+  }, [contacts]);
+
+  const getContactColumnValue = (contact, column) => {
+    const workbookKey = contact.workbookId || 'default';
+    let sourceIndex = column.sourceIndexByWorkbook.get(workbookKey);
+
+    if (sourceIndex === undefined) {
+      sourceIndex = (contact.headers || []).findIndex(
+        (header) => normalizeHeader(header) === column.key
+      );
+    }
+
+    return sourceIndex >= 0 ? displayCell(contact.values?.[sourceIndex]) : '-';
+  };
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 bg-white"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 14 }}
+        transition={{ duration: 0.22, ease: 'easeOut' }}
+        className="relative flex h-screen w-screen flex-col overflow-hidden bg-white"
+      >
+        <LinkedContactsBackground />
+        <div className="relative z-10 border-b border-orange-100 bg-white/95 px-6 py-5 shadow-sm backdrop-blur md:px-10">
+          <div className="mx-auto flex max-w-[1800px] items-start justify-between gap-5">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
+                Contactos vinculados
+              </p>
+              <h2 className="mt-2 line-clamp-2 text-3xl font-semibold text-orange-950">
+                {meta.title}
+              </h2>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-orange-600">
+                {meta.subtitle || 'Estos son los contactos asociados a esta oportunidad.'}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700 shadow-sm">
+                {meta.count} contactos
+              </span>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm font-semibold text-orange-950 shadow-sm transition hover:border-orange-200 hover:bg-orange-50"
+                aria-label="Cerrar contactos vinculados"
+              >
+                <X size={18} />
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="gestiona-scrollbar relative z-10 flex-1 overflow-auto bg-white/45 px-6 py-6 md:px-10">
+          {errorMessage && (
+            <div className="mx-auto max-w-[1800px] rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+              {errorMessage}
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="mx-auto max-w-[1800px] rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-10 text-center text-sm font-semibold text-orange-600">
+              Cargando contactos vinculados...
+            </div>
+          ) : contacts.length ? (
+            <div className="mx-auto max-w-[1800px] overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm">
+              <div className="gestiona-scrollbar overflow-x-auto">
+                <table className="min-w-full border-collapse text-sm text-orange-950">
+                  <thead className="bg-gradient-to-r from-orange-500 to-red-500 text-xs font-semibold uppercase text-white">
+                    <tr>
+                      <th className="border border-orange-200 px-4 py-3 text-left">
+                        Gestion
+                      </th>
+                      <th className="border border-orange-200 px-4 py-3 text-left">
+                        Origen
+                      </th>
+                      {columns.map((column) => (
+                        <th
+                          key={column.key}
+                          className="border border-orange-200 px-4 py-3 text-left"
+                        >
+                          {column.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contacts.map(({ id, contact }, index) => (
+                      <tr
+                        key={id}
+                        className={index % 2 === 0 ? 'bg-orange-50/35' : 'bg-white'}
+                      >
+                        <td className="w-28 border border-orange-100 px-4 py-3 align-middle">
+                          <div className="flex h-full min-h-24 items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={() => onUnlink(id)}
+                            disabled={unlinkingContactId === id}
+                            className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-rose-100 bg-white px-3 py-2 text-xs font-semibold text-rose-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            title="Quitar contacto de esta oportunidad"
+                          >
+                            <Trash2 size={14} />
+                            {unlinkingContactId === id ? 'Quitando...' : 'Quitar'}
+                          </button>
+                          </div>
+                        </td>
+                        <td className="min-w-52 border border-orange-100 px-4 py-3 align-top">
+                          <p className="font-semibold text-orange-950">
+                            {contact.workbookName || 'Contactos'}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-orange-500">
+                            {contact.sourceFileName || 'Excel de contactos'}
+                            {contact.rowNumber ? ` · Fila ${contact.rowNumber}` : ''}
+                          </p>
+                        </td>
+                        {columns.map((column) => (
+                          <td
+                            key={`${id}-${column.key}`}
+                            className="min-w-44 whitespace-pre-line break-words border border-orange-100 px-4 py-3 align-top leading-5"
+                          >
+                            {getContactColumnValue(contact, column)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="mx-auto max-w-[1800px] rounded-2xl border border-orange-100 bg-white px-4 py-10 text-center">
+              <p className="text-sm font-semibold text-orange-950">
+                Aun no hay contactos vinculados
+              </p>
+              <p className="mt-2 text-sm text-orange-500">
+                Selecciona contactos desde la biblioteca y anadelos a esta oportunidad.
+              </p>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const OpportunityPickerModal = ({
+  selectedCount,
+  opportunities,
+  searchValue,
+  isLoading,
+  isLinking,
+  errorMessage,
+  onSearchChange,
+  onCancel,
+  onSelect,
+}) => (
+  <motion.div
+    className="fixed inset-0 z-50 grid place-items-center bg-orange-950/45 px-4 py-6 backdrop-blur-sm"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+  >
+    <motion.div
+      initial={{ opacity: 0, y: 14, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 10, scale: 0.98 }}
+      className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-2xl"
+    >
+      <div className="flex items-start justify-between border-b border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 px-6 py-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
+            Vincular contactos
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-orange-950">
+            Elige una oportunidad
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-orange-600">
+            Se enlazaran {selectedCount} contactos a la oportunidad que selecciones. Los contactos
+            seguiran disponibles en esta biblioteca para reutilizarlos.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isLinking}
+          className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-orange-500 transition hover:bg-white disabled:opacity-50"
+          aria-label="Cerrar selector"
+        >
+          <X size={19} />
+        </button>
+      </div>
+
+      <div className="border-b border-orange-100 px-6 py-4">
+        <label className="flex items-center gap-3 rounded-xl border border-orange-100 bg-white px-4 py-3 shadow-sm">
+          <Search size={17} className="text-orange-300" />
+          <input
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Buscar oportunidad por proyecto, empresa, topic o fila..."
+            className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
+            autoFocus
+          />
+        </label>
+      </div>
+
+      <div className="gestiona-scrollbar flex-1 overflow-y-auto p-6">
+        {errorMessage && (
+          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+            {errorMessage}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-8 text-center text-sm font-semibold text-orange-600">
+            Buscando oportunidades...
+          </div>
+        ) : opportunities.length ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {opportunities.map((row) => {
+              const opportunity = buildOpportunityOption(row);
+
+              return (
+                <button
+                  key={`${opportunity.workbookId}-${opportunity.rowId}`}
+                  type="button"
+                  onClick={() => onSelect(opportunity)}
+                  disabled={isLinking}
+                  className="group cursor-pointer rounded-2xl border border-orange-100 bg-white p-4 text-left shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-sm font-semibold text-orange-950">
+                        {opportunity.title}
+                      </p>
+                      <p className="mt-2 line-clamp-2 text-xs leading-5 text-orange-500">
+                        {opportunity.subtitle}
+                      </p>
+                    </div>
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-orange-50 text-orange-500 transition group-hover:bg-white">
+                      <UserPlus size={16} />
+                    </span>
+                  </div>
+                  {opportunity.badge && (
+                    <span className="mt-4 inline-flex rounded-full border border-orange-100 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                      {opportunity.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-orange-100 bg-white px-4 py-8 text-center">
+            <p className="text-sm font-semibold text-orange-950">
+              No hay oportunidades disponibles
+            </p>
+            <p className="mt-2 text-sm text-orange-500">
+              Importa un Excel en la biblioteca de oportunidades o prueba otra busqueda.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end border-t border-orange-100 px-6 py-4">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isLinking}
+          className="cursor-pointer rounded-xl border border-orange-100 px-5 py-3 text-sm font-semibold text-orange-950 transition hover:bg-orange-50 disabled:opacity-50"
+        >
+          Cancelar
         </button>
       </div>
     </motion.div>

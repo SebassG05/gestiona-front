@@ -57,3 +57,35 @@ export const deleteOpportunityWorkbookRow = async ({ portalId, workbookId, rowId
   );
   return response.data;
 };
+
+export const linkContactsToOpportunityRow = async ({
+  portalId,
+  workbookId,
+  rowId,
+  contactRowIds,
+}) => {
+  const response = await api.post(
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}/contacts/link`,
+    { contactRowIds }
+  );
+  return response.data;
+};
+
+export const getLinkedContactsForOpportunityRows = async ({
+  portalId,
+  workbookId,
+  rowIds,
+}) => {
+  const response = await api.post(
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/contacts/linked`,
+    { rowIds }
+  );
+  return response.data;
+};
+
+export const unlinkContactFromOpportunityRow = async ({ portalId, workbookId, linkId }) => {
+  const response = await api.delete(
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/contacts/linked/${encodeURIComponent(linkId)}`
+  );
+  return response.data;
+};
