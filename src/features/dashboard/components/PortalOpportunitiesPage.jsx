@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ContactRound,
   Copy,
+  Filter,
   FileSpreadsheet,
   Search,
   Sheet,
@@ -311,6 +312,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const { portalId } = useParams();
   const copy = libraryCopies[libraryType] || libraryCopies.opportunities;
   const workbookCategory = copy.category;
+  const isContactsLibrary = workbookCategory === 'contacts';
   const excelInputRef = useRef(null);
   const [workbooks, setWorkbooks] = useState([]);
   const [activeWorkbookId, setActiveWorkbookId] = useState('');
@@ -332,6 +334,17 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [globalSearchError, setGlobalSearchError] = useState('');
   const [workbookPage, setWorkbookPage] = useState(1);
   const [workbookPagination, setWorkbookPagination] = useState(emptyRowsPagination);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [draftContactFilters, setDraftContactFilters] = useState([{ header: '', value: '' }]);
+  const [appliedContactFilters, setAppliedContactFilters] = useState([]);
+
+  const readyDraftContactFilters = useMemo(
+    () =>
+      draftContactFilters.filter(
+        (filter) => filter.header.trim() && filter.value.trim()
+      ),
+    [draftContactFilters]
+  );
 
   const loadWorkbooks = async (preferredWorkbookId = '') => {
     setIsLoading(true);
@@ -402,7 +415,14 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     getOpportunityWorkbook({
       portalId,
       workbookId: activeWorkbookId,
-      params: { page: workbookPage, limit: OPPORTUNITY_ROWS_PAGE_SIZE, category: workbookCategory },
+      params: {
+        page: workbookPage,
+        limit: OPPORTUNITY_ROWS_PAGE_SIZE,
+        category: workbookCategory,
+        ...(isContactsLibrary && appliedContactFilters.length
+          ? { filters: JSON.stringify(appliedContactFilters) }
+          : {}),
+      },
     })
       .then((response) => {
         if (!isMounted) return;
@@ -424,7 +444,14 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     return () => {
       isMounted = false;
     };
-  }, [activeWorkbookId, portalId, workbookPage, workbookCategory]);
+  }, [
+    activeWorkbookId,
+    portalId,
+    workbookPage,
+    workbookCategory,
+    isContactsLibrary,
+    appliedContactFilters,
+  ]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -524,9 +551,44 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     if (workbookId === activeWorkbookId) return;
     setIsWorkbookLoading(true);
     setSearchValue('');
+    setDraftContactFilters([{ header: '', value: '' }]);
+    setAppliedContactFilters([]);
     setWorkbookPage(1);
     setWorkbookPagination(emptyRowsPagination);
     setActiveWorkbookId(workbookId);
+  };
+
+  const updateContactFilter = (index, nextFilter) => {
+    setDraftContactFilters((currentFilters) =>
+      currentFilters.map((filter, filterIndex) =>
+        filterIndex === index ? { ...filter, ...nextFilter } : filter
+      )
+    );
+  };
+
+  const addContactFilter = () => {
+    setDraftContactFilters((currentFilters) => [
+      ...currentFilters,
+      { header: visibleColumns[0]?.header || '', value: '' },
+    ]);
+  };
+
+  const removeContactFilter = (index) => {
+    setDraftContactFilters((currentFilters) => {
+      const nextFilters = currentFilters.filter((_, filterIndex) => filterIndex !== index);
+      return nextFilters.length ? nextFilters : [{ header: '', value: '' }];
+    });
+  };
+
+  const applyContactFilters = () => {
+    setAppliedContactFilters(readyDraftContactFilters);
+    setWorkbookPage(1);
+  };
+
+  const clearContactFilters = () => {
+    setDraftContactFilters([{ header: '', value: '' }]);
+    setAppliedContactFilters([]);
+    setWorkbookPage(1);
   };
 
   const handleImport = async () => {
@@ -592,7 +654,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   };
 
   const handleCopyColumn = async (column) => {
-    const columnContent = (activeWorkbook?.rows || [])
+    const columnContent = filteredRows
       .map((row) => {
         const value = row.values[column.sourceIndex];
         return value === null || value === undefined ? '' : displayCell(value);
@@ -877,7 +939,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               <LoadingState label={copy.loadingList} />
             ) : workbooks.length === 0 ? (
               <EmptyLibrary copy={copy} onImport={() => excelInputRef.current?.click()} />
-            ) : isWorkbookLoading || !activeWorkbook ? (
+            ) : !activeWorkbook ? (
               <LoadingState label="Abriendo Excel..." />
             ) : (
               <AnimatePresence mode="wait" initial={false}>
@@ -917,6 +979,26 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                           className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
                         />
                       </label>
+                      {isContactsLibrary && (
+                        <button
+                          type="button"
+                          onClick={() => setIsFilterPanelOpen((current) => !current)}
+                          className={`inline-flex h-full cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                            isFilterPanelOpen || appliedContactFilters.length
+                              ? 'border-orange-300 bg-orange-50 text-orange-700'
+                              : 'border-orange-100 bg-white text-orange-900 hover:bg-orange-50'
+                          }`}
+                          aria-expanded={isFilterPanelOpen}
+                        >
+                          <Filter size={16} strokeWidth={2.1} />
+                          Filtrar
+                          {appliedContactFilters.length > 0 && (
+                            <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[11px] text-white">
+                              {appliedContactFilters.length}
+                            </span>
+                          )}
+                        </button>
+                      )}
                       <div>
                         <button
                           type="button"
@@ -948,6 +1030,134 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                       </button>
                     </div>
                   </div>
+
+                  <AnimatePresence initial={false}>
+                    {isWorkbookLoading && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden border-b border-orange-100 bg-orange-50/55"
+                      >
+                        <div className="flex items-center gap-2 px-5 py-3 text-xs font-semibold text-orange-600">
+                          <span className="h-2 w-2 animate-pulse rounded-full bg-orange-500" />
+                          Actualizando resultados...
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <AnimatePresence initial={false}>
+                    {isContactsLibrary && isFilterPanelOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                        className="overflow-hidden border-b border-orange-100"
+                      >
+                        <div className="bg-gradient-to-r from-orange-50/75 via-white to-orange-50/45 px-5 py-4">
+                          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-orange-950">
+                                Filtrar contactos
+                              </p>
+                              <p className="mt-1 text-xs leading-5 text-orange-500">
+                                Prepara los criterios y aplica el filtro cuando lo tengas listo.
+                              </p>
+                            </div>
+                            {appliedContactFilters.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {appliedContactFilters.map((filter) => (
+                                  <span
+                                    key={`${filter.header}-${filter.value}`}
+                                    className="rounded-full border border-orange-100 bg-white px-3 py-1.5 text-xs font-semibold text-orange-700"
+                                  >
+                                    {filter.header}: {filter.value}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-3">
+                            {draftContactFilters.map((filter, index) => (
+                              <div
+                                key={`${index}-${filter.header}`}
+                                className="grid gap-3 rounded-2xl border border-orange-100 bg-white p-3 md:grid-cols-[minmax(180px,260px)_1fr_auto]"
+                              >
+                                <select
+                                  value={filter.header}
+                                  onChange={(event) =>
+                                    updateContactFilter(index, { header: event.target.value })
+                                  }
+                                  className="h-11 rounded-xl border border-orange-100 bg-white px-3 text-sm font-semibold text-orange-950 outline-none transition focus:border-orange-300"
+                                >
+                                  <option value="">Columna</option>
+                                  {visibleColumns.map((column) => (
+                                    <option key={column.header} value={column.header}>
+                                      {column.header}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  value={filter.value}
+                                  onChange={(event) =>
+                                    updateContactFilter(index, { value: event.target.value })
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      applyContactFilters();
+                                    }
+                                  }}
+                                  placeholder="Texto a buscar en esa columna..."
+                                  className="h-11 rounded-xl border border-orange-100 bg-white px-3 text-sm text-orange-950 outline-none transition placeholder:text-orange-300 focus:border-orange-300"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeContactFilter(index)}
+                                  className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl border border-orange-100 px-3 text-sm font-semibold text-orange-700 transition hover:bg-orange-50"
+                                >
+                                  Quitar
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <button
+                              type="button"
+                              onClick={addContactFilter}
+                              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-100 bg-white px-4 py-2.5 text-sm font-semibold text-orange-900 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600"
+                            >
+                              <Filter size={14} className="text-orange-400" />
+                              Anadir filtro
+                            </button>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <button
+                                type="button"
+                                onClick={clearContactFilters}
+                                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-100 bg-white px-4 py-2.5 text-sm font-semibold text-orange-700 transition hover:bg-orange-50"
+                              >
+                                <X size={14} />
+                                Limpiar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={applyContactFilters}
+                                disabled={readyDraftContactFilters.length === 0}
+                                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-default disabled:opacity-45"
+                              >
+                                <Filter size={14} />
+                                Aplicar filtros
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   <AnimatePresence initial={false}>
                     {isCopyMenuOpen && (
