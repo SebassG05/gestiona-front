@@ -10,8 +10,10 @@ import {
   ChevronRight,
   ContactRound,
   Copy,
+  Edit3,
   Filter,
   FileSpreadsheet,
+  Plus,
   Search,
   Sheet,
   Trash2,
@@ -21,11 +23,14 @@ import {
 import { useParams } from 'react-router-dom';
 import PortalSidebar from './PortalSidebar.jsx';
 import {
+  createOpportunityWorkbookRow,
   deleteOpportunityWorkbook,
+  deleteOpportunityWorkbookRow,
   getOpportunityWorkbook,
   getOpportunityWorkbooks,
   importOpportunityWorkbook,
   searchOpportunityWorkbooks,
+  updateOpportunityWorkbookRow,
 } from '../services/opportunityWorkbookService.js';
 
 const OPPORTUNITY_ROWS_PAGE_SIZE = 80;
@@ -334,9 +339,13 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [globalSearchError, setGlobalSearchError] = useState('');
   const [workbookPage, setWorkbookPage] = useState(1);
   const [workbookPagination, setWorkbookPagination] = useState(emptyRowsPagination);
+  const [workbookReloadKey, setWorkbookReloadKey] = useState(0);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [draftContactFilters, setDraftContactFilters] = useState([{ header: '', value: '' }]);
   const [appliedContactFilters, setAppliedContactFilters] = useState([]);
+  const [rowModal, setRowModal] = useState(null);
+  const [rowFormValues, setRowFormValues] = useState([]);
+  const [isSavingRow, setIsSavingRow] = useState(false);
 
   const readyDraftContactFilters = useMemo(
     () =>
@@ -451,6 +460,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     workbookCategory,
     isContactsLibrary,
     appliedContactFilters,
+    workbookReloadKey,
   ]);
 
   useEffect(() => {
@@ -591,6 +601,76 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     setWorkbookPage(1);
   };
 
+  const openCreateRowModal = () => {
+    const headers = activeWorkbook?.workbook?.headers || [];
+    setRowFormValues(headers.map(() => ''));
+    setRowModal({ mode: 'create', row: null });
+  };
+
+  const openEditRowModal = (row) => {
+    const headers = activeWorkbook?.workbook?.headers || [];
+    setRowFormValues(headers.map((_, index) => displayCell(row.values?.[index]) === '-' ? '' : displayCell(row.values?.[index])));
+    setRowModal({ mode: 'edit', row });
+  };
+
+  const closeRowModal = () => {
+    if (isSavingRow) return;
+    setRowModal(null);
+    setRowFormValues([]);
+  };
+
+  const saveContactRow = async () => {
+    if (!activeWorkbook?.workbook?._id || !rowModal || isSavingRow) return;
+    setIsSavingRow(true);
+    setErrorMessage('');
+
+    try {
+      if (rowModal.mode === 'edit') {
+        await updateOpportunityWorkbookRow({
+          portalId,
+          workbookId: activeWorkbook.workbook._id,
+          rowId: rowModal.row._id,
+          values: rowFormValues,
+        });
+        setNotice('Contacto actualizado correctamente.');
+      } else {
+        await createOpportunityWorkbookRow({
+          portalId,
+          workbookId: activeWorkbook.workbook._id,
+          values: rowFormValues,
+        });
+        setNotice('Contacto anadido correctamente.');
+      }
+
+      setRowModal(null);
+      setRowFormValues([]);
+      setWorkbookReloadKey((current) => current + 1);
+      await loadWorkbooks(activeWorkbook.workbook._id);
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'No se pudo guardar el contacto.');
+    } finally {
+      setIsSavingRow(false);
+    }
+  };
+
+  const deleteContactRow = async (row) => {
+    if (!activeWorkbook?.workbook?._id || !window.confirm('Eliminar este contacto?')) return;
+    setErrorMessage('');
+
+    try {
+      await deleteOpportunityWorkbookRow({
+        portalId,
+        workbookId: activeWorkbook.workbook._id,
+        rowId: row._id,
+      });
+      setNotice('Contacto eliminado correctamente.');
+      setWorkbookReloadKey((current) => current + 1);
+      await loadWorkbooks(activeWorkbook.workbook._id);
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'No se pudo eliminar el contacto.');
+    }
+  };
+
   const handleImport = async () => {
     if (!importPreview?.files.length || isImporting) return;
     setIsImporting(true);
@@ -709,7 +789,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     () => buildMergedTable(filteredRows, visibleColumns),
     [filteredRows, visibleColumns]
   );
-  const tableMinWidth = Math.max(900, visibleColumns.length * 220);
+  const tableMinWidth = Math.max(900, visibleColumns.length * 220 + (isContactsLibrary ? 96 : 0));
   const normalizedGlobalSearch = globalSearchValue.trim();
   const shouldShowGlobalSearch = normalizedGlobalSearch.length >= 2;
 
@@ -982,6 +1062,16 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                       {isContactsLibrary && (
                         <button
                           type="button"
+                          onClick={openCreateRowModal}
+                          className="inline-flex h-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-800 shadow-sm transition hover:border-orange-300 hover:bg-orange-100 hover:text-orange-900"
+                        >
+                          <Plus size={16} strokeWidth={2.1} />
+                          Anadir contacto
+                        </button>
+                      )}
+                      {isContactsLibrary && (
+                        <button
+                          type="button"
                           onClick={() => setIsFilterPanelOpen((current) => !current)}
                           className={`inline-flex h-full cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
                             isFilterPanelOpen || appliedContactFilters.length
@@ -1203,6 +1293,11 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                         <table className="w-full table-fixed border-collapse">
                           <thead>
                             <tr className="bg-orange-500 text-center text-xs font-semibold uppercase tracking-wide text-white">
+                              {isContactsLibrary && (
+                                <th className="sticky left-0 z-10 w-24 border border-white/25 bg-orange-500 px-3 py-3">
+                                  Gestion
+                                </th>
+                              )}
                               {visibleColumns.map((column) => (
                                 <th
                                   key={column.header}
@@ -1220,10 +1315,34 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                               return (
                                 <tr
                                   key={row._id}
-                                  className={`text-center text-sm text-orange-950 transition hover:brightness-[0.98] ${
+                                  className={`group text-center text-sm text-orange-950 transition hover:brightness-[0.98] ${
                                     groupIsTinted ? 'bg-orange-50' : 'bg-white'
                                   }`}
                                 >
+                                  {isContactsLibrary && (
+                                    <td className="sticky left-0 z-10 w-24 border border-orange-100 bg-inherit px-2 py-3 align-middle">
+                                      <div className="flex justify-center gap-1.5 opacity-70 transition duration-200 group-hover:opacity-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditRowModal(row)}
+                                          className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg border border-orange-100 bg-white/90 text-orange-600 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 hover:shadow"
+                                          title="Editar contacto"
+                                          aria-label="Editar contacto"
+                                        >
+                                          <Edit3 size={14} strokeWidth={2.1} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => deleteContactRow(row)}
+                                          className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg border border-rose-100 bg-white/90 text-rose-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:shadow"
+                                          title="Eliminar contacto"
+                                          aria-label="Eliminar contacto"
+                                        >
+                                          <Trash2 size={14} strokeWidth={2.1} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  )}
                                   {visibleColumns.map((column, columnPosition) => {
                                     const cellKey = `${rowIndex}:${columnPosition}`;
                                     if (mergedTable.hiddenCells.has(cellKey)) return null;
@@ -1282,6 +1401,26 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
             )}
           </section>
         </motion.main>
+
+        <AnimatePresence>
+          {rowModal && activeWorkbook && (
+            <ContactRowModal
+              mode={rowModal.mode}
+              columns={visibleColumns}
+              values={rowFormValues}
+              isSaving={isSavingRow}
+              onChange={(sourceIndex, value) =>
+                setRowFormValues((currentValues) => {
+                  const nextValues = [...currentValues];
+                  nextValues[sourceIndex] = value;
+                  return nextValues;
+                })
+              }
+              onCancel={closeRowModal}
+              onSave={saveContactRow}
+            />
+          )}
+        </AnimatePresence>
 
         <AnimatePresence>
           {importPreview && (
@@ -1511,6 +1650,99 @@ const ImportModal = ({ preview, copy, isImporting, onCancel, onImport }) => (
             : `Importar ${preview.files.length} ${
                 preview.files.length === 1 ? 'página' : 'páginas'
               }`}
+        </button>
+      </div>
+    </motion.div>
+  </motion.div>
+);
+
+const ContactRowModal = ({ mode, columns, values, isSaving, onChange, onCancel, onSave }) => (
+  <motion.div
+    className="fixed inset-0 z-50 grid place-items-center bg-orange-950/45 px-4 py-6 backdrop-blur-sm"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+  >
+    <motion.div
+      initial={{ opacity: 0, y: 14, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 10, scale: 0.98 }}
+      className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-2xl"
+    >
+      <div className="flex items-start justify-between border-b border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 px-6 py-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
+            {mode === 'edit' ? 'Editar contacto' : 'Nuevo contacto'}
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-orange-950">
+            {mode === 'edit' ? 'Actualizar contacto' : 'Anadir contacto'}
+          </h2>
+          <p className="mt-2 text-sm text-orange-600">
+            Completa los campos que quieras guardar dentro de esta pagina de contactos.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSaving}
+          className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-orange-500 transition hover:bg-white disabled:opacity-50"
+          aria-label="Cerrar formulario"
+        >
+          <X size={19} />
+        </button>
+      </div>
+
+      <div className="gestiona-scrollbar grid flex-1 gap-4 overflow-y-auto p-6 md:grid-cols-2">
+        {columns.map((column) => {
+          const value = values[column.sourceIndex] || '';
+          const isLongField = ['TEMATICA', 'KEYWORD', 'PROYECTOS'].includes(
+            normalizeHeader(column.header)
+          );
+
+          return (
+            <label
+              key={column.header}
+              className={isLongField ? 'md:col-span-2' : ''}
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-orange-900">
+                {column.header}
+              </span>
+              {isLongField ? (
+                <textarea
+                  value={value}
+                  onChange={(event) => onChange(column.sourceIndex, event.target.value)}
+                  rows={4}
+                  className="mt-2 w-full resize-y rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-orange-950 outline-none transition placeholder:text-orange-300 focus:border-orange-300"
+                />
+              ) : (
+                <input
+                  value={value}
+                  onChange={(event) => onChange(column.sourceIndex, event.target.value)}
+                  className="mt-2 h-12 w-full rounded-xl border border-orange-100 bg-white px-4 text-sm text-orange-950 outline-none transition placeholder:text-orange-300 focus:border-orange-300"
+                />
+              )}
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-col items-center justify-end gap-3 border-t border-orange-100 px-6 py-4 sm:flex-row">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSaving}
+          className="w-full cursor-pointer rounded-xl border border-orange-100 px-5 py-3 text-sm font-semibold text-orange-950 transition hover:bg-orange-50 disabled:opacity-50 sm:w-auto"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={isSaving}
+          className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+        >
+          {mode === 'edit' ? <Edit3 size={17} /> : <Plus size={17} />}
+          {isSaving ? 'Guardando...' : mode === 'edit' ? 'Guardar cambios' : 'Anadir contacto'}
         </button>
       </div>
     </motion.div>

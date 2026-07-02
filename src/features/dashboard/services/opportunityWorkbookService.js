@@ -34,3 +34,26 @@ export const deleteOpportunityWorkbook = async ({ portalId, workbookId }) => {
   );
   return response.data;
 };
+
+export const createOpportunityWorkbookRow = async ({ portalId, workbookId, values }) => {
+  const response = await api.post(
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows`,
+    { values }
+  );
+  return response.data;
+};
+
+export const updateOpportunityWorkbookRow = async ({ portalId, workbookId, rowId, values }) => {
+  const response = await api.patch(
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}`,
+    { values }
+  );
+  return response.data;
+};
+
+export const deleteOpportunityWorkbookRow = async ({ portalId, workbookId, rowId }) => {
+  const response = await api.delete(
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}`
+  );
+  return response.data;
+};
