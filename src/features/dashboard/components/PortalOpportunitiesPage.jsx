@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ContactRound,
   Copy,
   FileSpreadsheet,
   Search,
@@ -269,8 +270,47 @@ const detectSheetTable = (sheets) => {
 
 const fileNameWithoutExtension = (fileName) => fileName.replace(/\.xlsx$/i, '').trim();
 
-const PortalOpportunitiesPage = () => {
+const libraryCopies = {
+  opportunities: {
+    category: 'opportunities',
+    eyebrow: 'Oportunidades',
+    title: 'Biblioteca de oportunidades',
+    description:
+      'Importa varios Excel y consulta cada uno como una pagina independiente dentro del portal.',
+    searchAllPlaceholder: 'Buscar en todos los Excel importados...',
+    loadingList: 'Cargando paginas de oportunidades...',
+    loadListError: 'No se pudieron cargar las paginas de oportunidades.',
+    importSingle: 'La pagina de oportunidades se ha importado correctamente.',
+    importMultiple: (count) => `${count} paginas de oportunidades importadas correctamente.`,
+    emptyTitle: 'Todavia no hay paginas de oportunidades',
+    emptyDescription:
+      'Puedes seleccionar varios Excel a la vez. Cada archivo se guardara como una pagina independiente.',
+    emptyIcon: BriefcaseBusiness,
+    importTitle: 'Importar paginas de oportunidades',
+  },
+  contacts: {
+    category: 'contacts',
+    eyebrow: 'Contactos',
+    title: 'Biblioteca de contactos',
+    description:
+      'Guarda y consulta los Excel de contactos del portal separados de las oportunidades.',
+    searchAllPlaceholder: 'Buscar en todos los contactos importados...',
+    loadingList: 'Cargando paginas de contactos...',
+    loadListError: 'No se pudieron cargar las paginas de contactos.',
+    importSingle: 'La pagina de contactos se ha importado correctamente.',
+    importMultiple: (count) => `${count} paginas de contactos importadas correctamente.`,
+    emptyTitle: 'Todavia no hay paginas de contactos',
+    emptyDescription:
+      'Importa el Excel de contactos y quedara guardado en esta seccion del portal.',
+    emptyIcon: ContactRound,
+    importTitle: 'Importar paginas de contactos',
+  },
+};
+
+const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const { portalId } = useParams();
+  const copy = libraryCopies[libraryType] || libraryCopies.opportunities;
+  const workbookCategory = copy.category;
   const excelInputRef = useRef(null);
   const [workbooks, setWorkbooks] = useState([]);
   const [activeWorkbookId, setActiveWorkbookId] = useState('');
@@ -298,7 +338,9 @@ const PortalOpportunitiesPage = () => {
     setErrorMessage('');
 
     try {
-      const response = await getOpportunityWorkbooks(portalId);
+      const response = await getOpportunityWorkbooks(portalId, {
+        category: workbookCategory,
+      });
       const nextWorkbooks = response.data || [];
       setWorkbooks(nextWorkbooks);
       if (preferredWorkbookId) setWorkbookPage(1);
@@ -310,7 +352,7 @@ const PortalOpportunitiesPage = () => {
       });
     } catch (error) {
       setErrorMessage(
-        error.response?.data?.message || 'No se pudieron cargar las páginas de oportunidades.'
+        error.response?.data?.message || copy.loadListError
       );
     } finally {
       setIsLoading(false);
@@ -320,7 +362,14 @@ const PortalOpportunitiesPage = () => {
   useEffect(() => {
     let isMounted = true;
 
-    getOpportunityWorkbooks(portalId)
+    setIsLoading(true);
+    setErrorMessage('');
+    setActiveWorkbook(null);
+    setActiveWorkbookId('');
+    setWorkbookPage(1);
+    setWorkbookPagination(emptyRowsPagination);
+
+    getOpportunityWorkbooks(portalId, { category: workbookCategory })
       .then((response) => {
         if (!isMounted) return;
         const nextWorkbooks = response.data || [];
@@ -331,7 +380,7 @@ const PortalOpportunitiesPage = () => {
         if (isMounted) {
           setErrorMessage(
             error.response?.data?.message ||
-              'No se pudieron cargar las páginas de oportunidades.'
+              copy.loadListError
           );
         }
       })
@@ -342,7 +391,7 @@ const PortalOpportunitiesPage = () => {
     return () => {
       isMounted = false;
     };
-  }, [portalId]);
+  }, [portalId, workbookCategory, copy.loadListError]);
 
   useEffect(() => {
     if (!activeWorkbookId) return undefined;
@@ -353,7 +402,7 @@ const PortalOpportunitiesPage = () => {
     getOpportunityWorkbook({
       portalId,
       workbookId: activeWorkbookId,
-      params: { page: workbookPage, limit: OPPORTUNITY_ROWS_PAGE_SIZE },
+      params: { page: workbookPage, limit: OPPORTUNITY_ROWS_PAGE_SIZE, category: workbookCategory },
     })
       .then((response) => {
         if (!isMounted) return;
@@ -375,7 +424,7 @@ const PortalOpportunitiesPage = () => {
     return () => {
       isMounted = false;
     };
-  }, [activeWorkbookId, portalId, workbookPage]);
+  }, [activeWorkbookId, portalId, workbookPage, workbookCategory]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -393,7 +442,7 @@ const PortalOpportunitiesPage = () => {
     let isActive = true;
     const timeout = window.setTimeout(() => {
       setIsGlobalSearching(true);
-      searchOpportunityWorkbooks({ portalId, query })
+      searchOpportunityWorkbooks({ portalId, query, category: workbookCategory })
         .then((response) => {
           if (isActive) setGlobalResults(response.data || []);
         })
@@ -414,7 +463,7 @@ const PortalOpportunitiesPage = () => {
       isActive = false;
       window.clearTimeout(timeout);
     };
-  }, [globalSearchValue, portalId]);
+  }, [globalSearchValue, portalId, workbookCategory]);
 
   const filteredRows = useMemo(() => {
     const rows = activeWorkbook?.rows || [];
@@ -496,6 +545,7 @@ const PortalOpportunitiesPage = () => {
             sourceFileName: workbook.fileName,
             sheetName: workbook.sheetName,
             headerRow: workbook.headerRow,
+            category: workbookCategory,
             headers: workbook.headers,
             rows: workbook.rows,
           },
@@ -507,8 +557,8 @@ const PortalOpportunitiesPage = () => {
       setImportPreview(null);
       setNotice(
         importedWorkbooks.length === 1
-          ? 'La página de oportunidades se ha importado correctamente.'
-          : `${importedWorkbooks.length} páginas de oportunidades importadas correctamente.`
+          ? copy.importSingle
+          : copy.importMultiple(importedWorkbooks.length)
       );
       await loadWorkbooks(firstImportedId);
     } catch (error) {
@@ -616,17 +666,16 @@ const PortalOpportunitiesPage = () => {
             <header className="flex flex-col gap-5 border-b border-orange-100 px-5 py-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-rose-400">
-                  Oportunidades
+                  {copy.eyebrow}
                 </p>
                 <h1
                   style={{ fontFamily: "'AlfaSlabOne', serif" }}
                   className="mt-3 text-3xl leading-tight text-orange-950 sm:text-4xl"
                 >
-                  Biblioteca de oportunidades
+                  {copy.title}
                 </h1>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-700 sm:text-base">
-                  Importa varios Excel y consulta cada uno como una página independiente dentro
-                  del portal.
+                  {copy.description}
                 </p>
               </div>
 
@@ -644,7 +693,7 @@ const PortalOpportunitiesPage = () => {
                   <input
                     value={globalSearchValue}
                     onChange={(event) => handleGlobalSearchChange(event.target.value)}
-                    placeholder="Buscar en todos los Excel importados..."
+                    placeholder={copy.searchAllPlaceholder}
                     className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
                   />
                 </label>
@@ -737,7 +786,7 @@ const PortalOpportunitiesPage = () => {
                           Busqueda global
                         </p>
                         <p className="mt-1 text-xs leading-5 text-orange-500">
-                          Resultados encontrados en todos los Excel importados del portal.
+                          Resultados encontrados en esta biblioteca del portal.
                         </p>
                       </div>
                       <button
@@ -816,7 +865,7 @@ const PortalOpportunitiesPage = () => {
                       </div>
                     ) : (
                       <div className="rounded-2xl border border-orange-100 bg-white px-4 py-5 text-sm font-semibold text-orange-500">
-                        No hay coincidencias en los Excel importados.
+                        No hay coincidencias en esta biblioteca.
                       </div>
                     )}
                   </div>
@@ -825,9 +874,9 @@ const PortalOpportunitiesPage = () => {
             </AnimatePresence>
 
             {isLoading ? (
-              <LoadingState label="Cargando páginas de oportunidades..." />
+              <LoadingState label={copy.loadingList} />
             ) : workbooks.length === 0 ? (
-              <EmptyLibrary onImport={() => excelInputRef.current?.click()} />
+              <EmptyLibrary copy={copy} onImport={() => excelInputRef.current?.click()} />
             ) : isWorkbookLoading || !activeWorkbook ? (
               <LoadingState label="Abriendo Excel..." />
             ) : (
@@ -1028,6 +1077,7 @@ const PortalOpportunitiesPage = () => {
           {importPreview && (
             <ImportModal
               preview={importPreview}
+              copy={copy}
               isImporting={isImporting}
               onCancel={() => setImportPreview(null)}
               onImport={handleImport}
@@ -1128,18 +1178,20 @@ const LoadingState = ({ label }) => (
   </div>
 );
 
-const EmptyLibrary = ({ onImport }) => (
+const EmptyLibrary = ({ copy, onImport }) => {
+  const EmptyIcon = copy.emptyIcon;
+
+  return (
   <div className="grid min-h-[430px] place-items-center bg-white px-6 py-12 text-center">
     <div className="max-w-lg">
       <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-orange-50 text-orange-500">
-        <BriefcaseBusiness size={29} />
+        <EmptyIcon size={29} />
       </span>
       <h2 className="mt-5 text-2xl font-semibold text-orange-950">
-        Todavía no hay páginas de oportunidades
+        {copy.emptyTitle}
       </h2>
       <p className="mt-3 text-sm leading-6 text-orange-500">
-        Puedes seleccionar varios Excel a la vez. Cada archivo se guardará como una página
-        independiente.
+        {copy.emptyDescription}
       </p>
       <button
         type="button"
@@ -1151,9 +1203,10 @@ const EmptyLibrary = ({ onImport }) => (
       </button>
     </div>
   </div>
-);
+  );
+};
 
-const ImportModal = ({ preview, isImporting, onCancel, onImport }) => (
+const ImportModal = ({ preview, copy, isImporting, onCancel, onImport }) => (
   <motion.div
     className="fixed inset-0 z-50 grid place-items-center bg-orange-950/45 px-4 py-6 backdrop-blur-sm"
     initial={{ opacity: 0 }}
@@ -1172,7 +1225,7 @@ const ImportModal = ({ preview, isImporting, onCancel, onImport }) => (
             Previsualización
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-orange-950">
-            Importar páginas de oportunidades
+            {copy.importTitle}
           </h2>
           <p className="mt-2 text-sm text-orange-600">
             Revisa las tablas detectadas antes de guardarlas en el portal.

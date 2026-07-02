@@ -119,6 +119,14 @@ const AppRouter = () => {
           }
         />
         <Route
+          path="/dashboard/portal/:portalId/contacts"
+          element={
+            <ProtectedRoute>
+              <PortalOpportunitiesPage libraryType="contacts" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/dashboard/portal/:portalId/settings"
           element={
             <ProtectedRoute>

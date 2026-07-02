@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleHelp,
+  ContactRound,
   FileText,
   FilePenLine,
   FolderKanban,
@@ -18,7 +19,6 @@ import {
   Wallet,
   X,
   CalendarDays,
-  ChartColumn,
 } from 'lucide-react';
 
 const SIDEBAR_OPEN_WIDTH = 312;
@@ -37,12 +37,12 @@ const navigationItems = [
   { label: 'Proyectos', icon: FolderKanban, path: 'projects' },
   { label: 'Propuestas', icon: FilePenLine, path: 'proposals' },
   { label: 'Oportunidades', icon: BriefcaseBusiness, path: 'opportunities' },
+  { label: 'Contactos', icon: ContactRound, path: 'contacts' },
   { label: 'Equipo', icon: Users, path: 'team' },
   { label: 'Gantt', icon: SquareChartGantt, path: 'gantt' },
   { label: 'Financiacion', icon: Wallet, path: 'funding' },
   { label: 'Documentos', icon: FileText, path: 'documents' },
   { label: 'Calendario', icon: CalendarDays, path: 'calendar' },
-  { label: 'Informes', icon: ChartColumn, path: 'reports' },
   { label: 'Ajustes', icon: Settings, path: 'settings' },
 ];
 

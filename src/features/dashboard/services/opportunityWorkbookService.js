@@ -3,8 +3,8 @@ import api from '../../../config/api.js';
 const workbookPath = (portalId) =>
   `/portals/${encodeURIComponent(portalId)}/opportunity-workbooks`;
 
-export const getOpportunityWorkbooks = async (portalId) => {
-  const response = await api.get(workbookPath(portalId));
+export const getOpportunityWorkbooks = async (portalId, params = {}) => {
+  const response = await api.get(workbookPath(portalId), { params });
   return response.data;
 };
 
@@ -16,9 +16,9 @@ export const getOpportunityWorkbook = async ({ portalId, workbookId, params = {}
   return response.data;
 };
 
-export const searchOpportunityWorkbooks = async ({ portalId, query }) => {
+export const searchOpportunityWorkbooks = async ({ portalId, query, category }) => {
   const response = await api.get(`${workbookPath(portalId)}/search`, {
-    params: { q: query },
+    params: { q: query, category },
   });
   return response.data;
 };
