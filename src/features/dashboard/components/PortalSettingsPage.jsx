@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Copy, Crown, MailPlus, Send, Settings, Shield, Trash2, Users } from 'lucide-react';
+import { Check, Copy, Crown, MailPlus, Save, Send, Settings, Shield, Trash2, UserRound, Users } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import PortalSidebar from './PortalSidebar.jsx';
 import { getPortalMembers, invitePortalMembers, removePortalMember } from '../services/portalService.js';
+import { updateCurrentUser } from '../services/userService.js';
 
 const inputClass =
   'w-full rounded-2xl border border-orange-100 bg-white px-4 py-3 text-sm text-orange-950 placeholder-orange-300 outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100';
@@ -23,15 +24,19 @@ const PortalSettingsPage = () => {
   const [membersError, setMembersError] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
   const [removingMemberId, setRemovingMemberId] = useState('');
-
-  const portalJoinReference = useMemo(() => portalId || '', [portalId]);
-  const currentUser = useMemo(() => {
+  const [currentUser, setCurrentUser] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('user') || '{}');
     } catch {
       return {};
     }
-  }, []);
+  });
+  const [usernameInput, setUsernameInput] = useState(currentUser.username || '');
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameSuccess, setUsernameSuccess] = useState('');
+  const [isSavingUsername, setIsSavingUsername] = useState(false);
+
+  const portalJoinReference = useMemo(() => portalId || '', [portalId]);
   const isOwner = members.some((member) => member.role === 'owner' && member.id === currentUser.id);
 
   const loadMembers = async () => {
@@ -51,6 +56,10 @@ const PortalSettingsPage = () => {
   useEffect(() => {
     loadMembers();
   }, [portalId]);
+
+  useEffect(() => {
+    setUsernameInput(currentUser.username || '');
+  }, [currentUser.username]);
 
   const addInvite = () => {
     const email = emailInput.trim().toLowerCase();
@@ -78,6 +87,46 @@ const PortalSettingsPage = () => {
       window.setTimeout(() => setCopiedValue(''), 1800);
     } catch {
       setError('No se pudo copiar al portapapeles');
+    }
+  };
+
+  const handleUsernameSubmit = async (event) => {
+    event.preventDefault();
+
+    const nextUsername = usernameInput.trim();
+    setUsernameError('');
+    setUsernameSuccess('');
+
+    if (!nextUsername) {
+      setUsernameError('Introduce un nombre de usuario');
+      return;
+    }
+
+    if (nextUsername === currentUser.username) {
+      setUsernameSuccess('Ese nombre ya esta guardado');
+      return;
+    }
+
+    setIsSavingUsername(true);
+
+    try {
+      const response = await updateCurrentUser({ username: nextUsername });
+      const updatedUser = response.user;
+
+      setCurrentUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setMembers((current) =>
+        current.map((member) =>
+          member.id === updatedUser.id
+            ? { ...member, username: updatedUser.username, email: updatedUser.email }
+            : member
+        )
+      );
+      setUsernameSuccess('Nombre de usuario actualizado');
+    } catch (err) {
+      setUsernameError(err.response?.data?.message || 'No se pudo actualizar el nombre de usuario');
+    } finally {
+      setIsSavingUsername(false);
     }
   };
 
@@ -190,6 +239,73 @@ const PortalSettingsPage = () => {
               unirse al portal.
             </p>
           </motion.header>
+
+          <motion.section
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.05 }}
+            className="mt-6 rounded-[26px] border border-orange-100 bg-white/92 p-6 shadow-sm sm:p-8"
+          >
+            <form onSubmit={handleUsernameSubmit} className="grid gap-6 lg:grid-cols-[1fr_1.25fr] lg:items-end">
+              <div className="flex items-start gap-4">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-orange-50 text-orange-500">
+                  <UserRound size={22} strokeWidth={2.1} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-rose-400">Tu perfil</p>
+                  <h2 className="mt-1 text-2xl font-semibold text-orange-950">Nombre de usuario</h2>
+                  <p className="mt-1 text-sm leading-6 text-orange-600">
+                    Este nombre se mostrara en los portales donde participas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                <div>
+                  <label htmlFor="settings-username" className="mb-2 block text-sm font-semibold text-orange-950">
+                    Nuevo nombre
+                  </label>
+                  <input
+                    id="settings-username"
+                    type="text"
+                    value={usernameInput}
+                    onChange={(event) => {
+                      setUsernameInput(event.target.value);
+                      setUsernameError('');
+                      setUsernameSuccess('');
+                    }}
+                    className={inputClass}
+                    placeholder="tu_usuario"
+                    autoComplete="username"
+                  />
+                  <p className="mt-2 text-xs text-orange-400">
+                    Usa entre 3 y 30 caracteres: letras, numeros y guion bajo.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSavingUsername}
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-60 md:self-start md:mt-7"
+                >
+                  <Save size={17} strokeWidth={2.1} />
+                  {isSavingUsername ? 'Guardando...' : 'Guardar nombre'}
+                </button>
+
+                {(usernameError || usernameSuccess) && (
+                  <p
+                    className={`rounded-2xl border px-4 py-3 text-sm font-semibold md:col-span-2 ${
+                      usernameError
+                        ? 'border-red-200 bg-red-50 text-red-600'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    }`}
+                  >
+                    {usernameError || usernameSuccess}
+                  </p>
+                )}
+              </div>
+            </form>
+          </motion.section>
 
           <motion.section
             initial={{ opacity: 0, y: 18 }}

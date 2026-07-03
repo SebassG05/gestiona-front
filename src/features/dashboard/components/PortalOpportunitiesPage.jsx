@@ -200,10 +200,50 @@ const mergeableHeaders = new Set([
   'PROYECTO RELACIONADO',
   'PROYECTOS RELACIONADOS',
 ]);
+const singleValueGroupHeaders = new Set([
+  'OPENING',
+  'DEADLINE',
+  'DEADLINE APERTURA',
+  'LINK CALL',
+  'TYPE OF ACTION',
+  'ANUNCIO Y N',
+  'POTENCIAL MENSAJE',
+]);
+const opportunityDetailHeaders = new Set([
+  'PROYECTO RELACIONADO',
+  'PROYECTOS RELACIONADOS',
+  'NOMBRE',
+  'NOMBRE Y APELLIDOS',
+  'ROL',
+  'E MAIL',
+  'EMAIL',
+  'MAIL',
+  'CORREO',
+  'CONTACTO',
+]);
+const opportunityDetailColumnGroups = [
+  {
+    label: 'Proyecto relacionado',
+    headers: ['Proyectos relacionados', 'Proyecto relacionado'],
+  },
+  {
+    label: 'Nombre',
+    headers: ['Nombre', 'Nombre y apellidos'],
+  },
+  {
+    label: 'Rol',
+    headers: ['Rol'],
+  },
+  {
+    label: 'Email',
+    headers: ['E-mail', 'Email', 'Mail', 'Correo', 'Contacto'],
+  },
+];
 
 const buildMergedTable = (rows, columns) => {
   const spanByCell = new Map();
   const hiddenCells = new Set();
+  const displayValueByCell = new Map();
   const contactSpanByRow = new Map();
   const contactHiddenRows = new Set();
   const contactCountByRow = new Map();
@@ -243,12 +283,33 @@ const buildMergedTable = (rows, columns) => {
 
     const closeGroup = (endIndex) => {
       const rowSpan = endIndex - groupStartIndex + 1;
+      const groupRows = rows.slice(groupStartIndex, endIndex + 1);
       const contactCount = rows
         .slice(groupStartIndex, endIndex + 1)
         .reduce((total, row) => total + (Number(row.contactLinkCount) || 0), 0);
 
       contactSpanByRow.set(groupStartIndex, rowSpan);
       contactCountByRow.set(groupStartIndex, contactCount);
+
+      if (rowSpan > 1) {
+        columns.forEach((column, columnPosition) => {
+          if (!singleValueGroupHeaders.has(normalizeHeader(column.header))) return;
+
+          const cellKey = `${groupStartIndex}:${columnPosition}`;
+          const firstFilledValue = groupRows
+            .map((row) => row.values[column.sourceIndex])
+            .find(isFilled);
+
+          spanByCell.set(cellKey, rowSpan);
+          if (firstFilledValue !== undefined) {
+            displayValueByCell.set(cellKey, firstFilledValue);
+          }
+
+          for (let rowIndex = groupStartIndex + 1; rowIndex <= endIndex; rowIndex += 1) {
+            hiddenCells.add(`${rowIndex}:${columnPosition}`);
+          }
+        });
+      }
 
       for (let rowIndex = groupStartIndex + 1; rowIndex <= endIndex; rowIndex += 1) {
         contactHiddenRows.add(rowIndex);
@@ -276,6 +337,7 @@ const buildMergedTable = (rows, columns) => {
   return {
     spanByCell,
     hiddenCells,
+    displayValueByCell,
     rowGroups,
     contactSpanByRow,
     contactHiddenRows,
@@ -448,6 +510,11 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [isLoadingLinkedContacts, setIsLoadingLinkedContacts] = useState(false);
   const [linkedContactsError, setLinkedContactsError] = useState('');
   const [unlinkingContactId, setUnlinkingContactId] = useState('');
+  const [linkedContactSearchValue, setLinkedContactSearchValue] = useState('');
+  const [linkedContactSearchResults, setLinkedContactSearchResults] = useState([]);
+  const [isSearchingLinkedContacts, setIsSearchingLinkedContacts] = useState(false);
+  const [linkingSearchContactId, setLinkingSearchContactId] = useState('');
+  const [selectedOpportunityDetail, setSelectedOpportunityDetail] = useState(null);
 
   const readyDraftContactFilters = useMemo(
     () =>
@@ -519,6 +586,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
   useEffect(() => {
     setSelectedContactRowIds([]);
+    setSelectedOpportunityDetail(null);
   }, [activeWorkbookId, workbookCategory, appliedContactFilters]);
 
   useEffect(() => {
@@ -740,28 +808,42 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     }
   };
 
+  const loadLinkedContactsForRows = async ({ workbookId, rowIds }) => {
+    const response = await getLinkedContactsForOpportunityRows({
+      portalId,
+      workbookId,
+      rowIds,
+    });
+    setLinkedContacts(response.data || []);
+    return response.data || [];
+  };
+
   const openLinkedContactsModal = async ({ rows, count }) => {
-    if (!activeWorkbook?.workbook?._id || !rows?.length || !count) return;
+    if (!activeWorkbook?.workbook?._id || !rows?.length) return;
 
     const firstRow = { ...rows[0], workbook: activeWorkbook.workbook };
     const opportunity = buildOpportunityOption(firstRow);
+    const rowIds = rows.map((row) => row._id);
 
     setLinkedContactsModal({
       title: opportunity.title,
       subtitle: opportunity.subtitle,
       count,
+      workbookId: activeWorkbook.workbook._id,
+      primaryRowId: rows[0]._id,
+      rowIds,
     });
     setLinkedContacts([]);
     setLinkedContactsError('');
+    setLinkedContactSearchValue('');
+    setLinkedContactSearchResults([]);
     setIsLoadingLinkedContacts(true);
 
     try {
-      const response = await getLinkedContactsForOpportunityRows({
-        portalId,
+      await loadLinkedContactsForRows({
         workbookId: activeWorkbook.workbook._id,
-        rowIds: rows.map((row) => row._id),
+        rowIds,
       });
-      setLinkedContacts(response.data || []);
     } catch (error) {
       setLinkedContactsError(
         error.response?.data?.message || 'No se pudieron cargar los contactos vinculados.'
@@ -771,11 +853,31 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     }
   };
 
+  const openOpportunityDetail = ({ rows, count }) => {
+    if (!activeWorkbook?.workbook?._id || !rows?.length) return;
+
+    const rowsWithWorkbook = rows.map((row) => ({
+      ...row,
+      workbook: activeWorkbook.workbook,
+    }));
+    const opportunity = buildOpportunityOption(rowsWithWorkbook[0]);
+
+    setSelectedOpportunityDetail({
+      title: opportunity.title,
+      subtitle: opportunity.subtitle,
+      count: Number(count) || 0,
+      rows: rowsWithWorkbook,
+    });
+  };
+
   const closeLinkedContactsModal = () => {
     setLinkedContactsModal(null);
     setLinkedContacts([]);
     setLinkedContactsError('');
     setUnlinkingContactId('');
+    setLinkedContactSearchValue('');
+    setLinkedContactSearchResults([]);
+    setLinkingSearchContactId('');
   };
 
   const unlinkLinkedContact = async (linkId) => {
@@ -807,6 +909,86 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       setUnlinkingContactId('');
     }
   };
+
+  const linkSearchContactToCurrentOpportunity = async (contactRow) => {
+    if (
+      !linkedContactsModal?.workbookId ||
+      !linkedContactsModal?.primaryRowId ||
+      !contactRow?._id ||
+      linkingSearchContactId
+    ) {
+      return;
+    }
+
+    setLinkingSearchContactId(contactRow._id);
+    setLinkedContactsError('');
+
+    try {
+      await linkContactsToOpportunityRow({
+        portalId,
+        workbookId: linkedContactsModal.workbookId,
+        rowId: linkedContactsModal.primaryRowId,
+        contactRowIds: [contactRow._id],
+      });
+      const refreshedContacts = await loadLinkedContactsForRows({
+        workbookId: linkedContactsModal.workbookId,
+        rowIds: linkedContactsModal.rowIds,
+      });
+      setLinkedContactsModal((currentModal) =>
+        currentModal ? { ...currentModal, count: refreshedContacts.length } : currentModal
+      );
+      setLinkedContactSearchResults((currentResults) =>
+        currentResults.filter((result) => result._id !== contactRow._id)
+      );
+      await loadWorkbooks(linkedContactsModal.workbookId);
+    } catch (error) {
+      setLinkedContactsError(
+        error.response?.data?.message || 'No se pudo vincular este contacto.'
+      );
+    } finally {
+      setLinkingSearchContactId('');
+    }
+  };
+
+  useEffect(() => {
+    if (!linkedContactsModal) return undefined;
+
+    const query = linkedContactSearchValue.trim();
+    if (query.length < 2) {
+      setLinkedContactSearchResults([]);
+      setIsSearchingLinkedContacts(false);
+      return undefined;
+    }
+
+    let isActive = true;
+    const timeout = window.setTimeout(() => {
+      setIsSearchingLinkedContacts(true);
+
+      searchOpportunityWorkbooks({ portalId, query, category: 'contacts' })
+        .then((response) => {
+          if (!isActive) return;
+          const linkedIds = new Set(
+            linkedContacts.map((link) => link.contact?.rowId).filter(Boolean)
+          );
+          setLinkedContactSearchResults(
+            (response.data || [])
+              .filter((row) => !linkedIds.has(row._id))
+              .slice(0, 8)
+          );
+        })
+        .catch(() => {
+          if (isActive) setLinkedContactSearchResults([]);
+        })
+        .finally(() => {
+          if (isActive) setIsSearchingLinkedContacts(false);
+        });
+    }, 260);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeout);
+    };
+  }, [linkedContactSearchValue, linkedContacts, linkedContactsModal, portalId]);
 
   useEffect(() => {
     if (!isOpportunityPickerOpen) return undefined;
@@ -1112,9 +1294,14 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       const headers = activeWorkbook?.workbook?.headers || [];
       return headers
         .map((header, sourceIndex) => ({ header, sourceIndex }))
-        .filter((column) => !isGeneratedHeader(column.header));
+        .filter((column) => !isGeneratedHeader(column.header))
+        .filter(
+          (column) =>
+            isContactsLibrary ||
+            !opportunityDetailHeaders.has(normalizeHeader(column.header))
+        );
     },
-    [activeWorkbook]
+    [activeWorkbook, isContactsLibrary]
   );
   const mergedTable = useMemo(
     () => buildMergedTable(filteredRows, visibleColumns),
@@ -1631,8 +1818,10 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                     )}
                   </AnimatePresence>
 
-                  <div className="gestiona-scrollbar overflow-x-auto">
-                    <div style={{ minWidth: tableMinWidth }}>
+                  <div className="space-y-5 transition-all duration-300">
+                    <div className="min-w-0">
+                      <div className="gestiona-scrollbar overflow-x-auto">
+                        <div style={{ minWidth: tableMinWidth }}>
                       {filteredRows.length ? (
                         <table className="w-full table-fixed border-collapse">
                           <thead>
@@ -1727,10 +1916,29 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                     if (mergedTable.hiddenCells.has(cellKey)) return null;
 
                                     const rowSpan = mergedTable.spanByCell.get(cellKey) || 1;
+                                    const normalizedColumnHeader = normalizeHeader(column.header);
                                     const isMergedColumn = mergeableHeaders.has(
-                                      normalizeHeader(column.header)
+                                      normalizedColumnHeader
                                     );
-                                    const value = displayCell(row.values[column.sourceIndex]);
+                                    const isPrimaryTopicColumn =
+                                      !isContactsLibrary &&
+                                      primaryGroupHeaders.has(normalizedColumnHeader);
+                                    const value = displayCell(
+                                      mergedTable.displayValueByCell.has(cellKey)
+                                        ? mergedTable.displayValueByCell.get(cellKey)
+                                        : row.values[column.sourceIndex]
+                                    );
+                                    const groupedRows = filteredRows.slice(
+                                      rowIndex,
+                                      rowIndex + rowSpan
+                                    );
+                                    const contactCount =
+                                      mergedTable.contactCountByRow.get(rowIndex) || 0;
+                                    const isSelectedTopic =
+                                      isPrimaryTopicColumn &&
+                                      selectedOpportunityDetail?.rows?.some(
+                                        (detailRow) => detailRow._id === row._id
+                                      );
 
                                     return (
                                       <td
@@ -1743,7 +1951,27 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                         }`}
                                         title={value}
                                       >
-                                        {value}
+                                        {isPrimaryTopicColumn ? (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              openOpportunityDetail({
+                                                rows: groupedRows,
+                                                count: contactCount,
+                                              })
+                                            }
+                                            className={`mx-auto block max-w-full cursor-pointer whitespace-pre-line rounded-2xl border px-4 py-3 text-center font-semibold italic transition duration-200 focus:outline-none focus:ring-2 focus:ring-orange-200 ${
+                                              isSelectedTopic
+                                                ? 'border-orange-200 bg-white text-orange-700 shadow-[0_10px_26px_rgba(249,115,22,0.12)]'
+                                                : 'border-transparent text-orange-950 hover:border-orange-100 hover:bg-white/80 hover:text-orange-700 hover:shadow-[0_8px_22px_rgba(249,115,22,0.09)]'
+                                            }`}
+                                            title="Ver detalle del topic"
+                                          >
+                                            {value}
+                                          </button>
+                                        ) : (
+                                          value
+                                        )}
                                       </td>
                                     );
                                   })}
@@ -1780,12 +2008,19 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                                 {contactCount}
                                               </button>
                                             ) : (
-                                              <span
-                                                className="inline-flex items-center justify-center rounded-full border border-orange-100 bg-white px-3 py-1.5 text-orange-300 shadow-sm"
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  openLinkedContactsModal({
+                                                    rows: groupedRows,
+                                                    count: 0,
+                                                  })
+                                                }
+                                                className="inline-flex cursor-pointer items-center justify-center rounded-full border border-orange-100 bg-white px-3 py-1.5 text-orange-300 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-500 hover:shadow-md"
                                                 title="Sin contactos vinculados"
                                               >
                                                 <UserPlus size={14} />
-                                              </span>
+                                              </button>
                                             );
                                           })()}
                                         </div>
@@ -1809,16 +2044,34 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                           </div>
                         </div>
                       )}
-                    </div>
-                  </div>
+                        </div>
+                      </div>
 
-                  <RowsPagination
-                    pagination={workbookPagination}
-                    onPageChange={(nextPage) => {
-                      setSearchValue('');
-                      setWorkbookPage(nextPage);
-                    }}
-                  />
+                      <RowsPagination
+                        pagination={workbookPagination}
+                        onPageChange={(nextPage) => {
+                          setSearchValue('');
+                          setSelectedOpportunityDetail(null);
+                          setWorkbookPage(nextPage);
+                        }}
+                      />
+                    </div>
+
+                    <AnimatePresence>
+                      {selectedOpportunityDetail && !isContactsLibrary && (
+                        <OpportunityTopicDetailPanel
+                          detail={selectedOpportunityDetail}
+                          onClose={() => setSelectedOpportunityDetail(null)}
+                          onOpenContacts={() =>
+                            openLinkedContactsModal({
+                              rows: selectedOpportunityDetail.rows,
+                              count: selectedOpportunityDetail.count,
+                            })
+                          }
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </motion.div>
               </AnimatePresence>
             )}
@@ -1891,7 +2144,13 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               contacts={linkedContacts}
               isLoading={isLoadingLinkedContacts}
               unlinkingContactId={unlinkingContactId}
+              searchValue={linkedContactSearchValue}
+              searchResults={linkedContactSearchResults}
+              isSearching={isSearchingLinkedContacts}
+              linkingSearchContactId={linkingSearchContactId}
               errorMessage={linkedContactsError}
+              onSearchChange={setLinkedContactSearchValue}
+              onLinkSearchContact={linkSearchContactToCurrentOpportunity}
               onCancel={closeLinkedContactsModal}
               onUnlink={unlinkLinkedContact}
             />
@@ -1899,6 +2158,124 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
         </AnimatePresence>
       </div>
     </PortalSidebar>
+  );
+};
+
+const OpportunityTopicDetailPanel = ({ detail, onClose, onOpenContacts }) => {
+  const detailRows = detail.rows
+    .map((row) => {
+      const cells = opportunityDetailColumnGroups.map((group) => ({
+        label: group.label,
+        value: getRowValueByHeaderNames(row, group.headers) || '-',
+      }));
+
+      return {
+        id: row._id,
+        cells,
+        hasUsefulData: cells.some((cell) => cell.value !== '-'),
+      };
+    })
+    .filter((row) => row.hasUsefulData);
+
+  return (
+    <motion.aside
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 18 }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      className="min-w-0 overflow-hidden rounded-[28px] border border-orange-100 bg-white shadow-[0_24px_80px_rgba(249,115,22,0.14)]"
+    >
+      <div className="border-b border-orange-100 bg-gradient-to-br from-orange-50 via-white to-rose-50 px-5 py-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
+              Detalle del topic
+            </p>
+            <h3 className="mt-2 text-xl font-semibold leading-7 text-orange-950">
+              {detail.title}
+            </h3>
+            {detail.subtitle && (
+              <p className="mt-2 text-xs leading-5 text-orange-500">
+                {detail.subtitle}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-orange-100 bg-white text-orange-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50"
+            aria-label="Cerrar detalle"
+            title="Cerrar detalle"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenContacts}
+          className="mt-4 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-orange-100 bg-white px-4 py-3 text-sm font-semibold text-orange-800 shadow-sm transition hover:border-orange-300 hover:bg-orange-50"
+        >
+          <UserPlus size={16} />
+          Contactos vinculados
+          {detail.count > 0 && (
+            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
+              {detail.count}
+            </span>
+          )}
+        </button>
+      </div>
+
+      <div className="gestiona-scrollbar min-h-0 flex-1 overflow-y-auto p-5">
+        {detailRows.length ? (
+          <div className="gestiona-scrollbar overflow-x-auto rounded-2xl border border-orange-100 shadow-sm">
+            <table className="w-full min-w-[900px] table-fixed border-collapse">
+              <thead>
+                <tr className="bg-gradient-to-r from-orange-500 to-red-500 text-left text-xs font-semibold uppercase tracking-wide text-white">
+                  <th className="w-28 border border-white/20 px-4 py-3">Registro</th>
+                  {opportunityDetailColumnGroups.map((group) => (
+                    <th key={group.label} className="border border-white/20 px-4 py-3">
+                      {group.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {detailRows.map((row, index) => (
+                  <tr
+                    key={row.id}
+                    className={`text-sm text-orange-950 ${
+                      index % 2 === 0 ? 'bg-orange-50/55' : 'bg-white'
+                    }`}
+                  >
+                    <td className="border border-orange-100 px-4 py-4 font-semibold text-orange-600">
+                      {index + 1}
+                    </td>
+                    {row.cells.map((cell) => (
+                      <td
+                        key={`${row.id}-${cell.label}`}
+                        className="whitespace-pre-line break-words border border-orange-100 px-4 py-4 leading-5"
+                      >
+                        {cell.value}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/40 px-4 py-6 text-center">
+            <ContactRound size={24} className="mx-auto text-orange-300" />
+            <p className="mt-3 text-sm font-semibold text-orange-950">
+              No hay datos adicionales en este topic.
+            </p>
+            <p className="mt-1 text-xs leading-5 text-orange-500">
+              Cuando el Excel incluya nombres, roles o mails apareceran aqui.
+            </p>
+          </div>
+        )}
+      </div>
+    </motion.aside>
   );
 };
 
@@ -2256,7 +2633,13 @@ const LinkedContactsModal = ({
   contacts,
   isLoading,
   unlinkingContactId,
+  searchValue,
+  searchResults,
+  isSearching,
+  linkingSearchContactId,
   errorMessage,
+  onSearchChange,
+  onLinkSearchContact,
   onCancel,
   onUnlink,
 }) => {
@@ -2290,6 +2673,26 @@ const LinkedContactsModal = ({
     }
 
     return sourceIndex >= 0 ? displayCell(contact.values?.[sourceIndex]) : '-';
+  };
+
+  const describeContactResult = (row) => {
+    const headers = row.workbook?.headers || [];
+    const name =
+      getRowValueByHeaderNames(row, ['nombre y apellidos', 'nombre', 'name']) ||
+      displayCell(row.values?.find(isFilled)) ||
+      'Contacto sin nombre';
+    const email =
+      getRowValueByHeaderNames(row, ['contacto', 'email', 'e-mail', 'mail', 'correo']) ||
+      '';
+    const entity =
+      getRowValueByHeaderNames(row, ['entidad', 'empresa', 'entities']) ||
+      row.workbook?.name ||
+      'Contactos';
+    const detail =
+      getRowValueByHeaderNames(row, ['tematica', 'keyword', 'proyectos', 'rol']) ||
+      headers.filter((header) => !isGeneratedHeader(header)).slice(0, 2).join(' · ');
+
+    return { name, email, entity, detail };
   };
 
   return (
@@ -2343,6 +2746,76 @@ const LinkedContactsModal = ({
               {errorMessage}
             </div>
           )}
+
+          <div className="mx-auto mb-5 max-w-[1800px] rounded-2xl border border-orange-100 bg-white/95 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-orange-950">
+                  Buscar y vincular contacto
+                </p>
+                <p className="mt-1 text-xs text-orange-500">
+                  Escribe el nombre, email, entidad o palabra clave y anadelo a este topic.
+                </p>
+              </div>
+              <label className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-orange-100 bg-white px-4 py-3 shadow-sm lg:max-w-xl">
+                <Search size={17} className="text-orange-300" />
+                <input
+                  value={searchValue}
+                  onChange={(event) => onSearchChange(event.target.value)}
+                  placeholder="Buscar en la biblioteca de contactos..."
+                  className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
+                />
+              </label>
+            </div>
+
+            {searchValue.trim().length >= 2 && (
+              <div className="mt-4">
+                {isSearching ? (
+                  <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-sm font-semibold text-orange-600">
+                    Buscando contactos...
+                  </div>
+                ) : searchResults.length ? (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {searchResults.map((row) => {
+                      const contact = describeContactResult(row);
+
+                      return (
+                        <div
+                          key={row._id}
+                          className="flex items-start justify-between gap-4 rounded-xl border border-orange-100 bg-orange-50/35 p-4"
+                        >
+                          <div className="min-w-0">
+                            <p className="line-clamp-1 text-sm font-semibold text-orange-950">
+                              {contact.name}
+                            </p>
+                            <p className="mt-1 line-clamp-1 text-xs text-orange-600">
+                              {contact.email || 'Sin email registrado'}
+                            </p>
+                            <p className="mt-2 line-clamp-2 text-xs leading-5 text-orange-500">
+                              {contact.entity}
+                              {contact.detail ? ` · ${contact.detail}` : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onLinkSearchContact(row)}
+                            disabled={linkingSearchContactId === row._id}
+                            className="shrink-0 cursor-pointer rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {linkingSearchContactId === row._id ? 'Vinculando...' : 'Vincular'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-orange-500">
+                    No hay contactos que coincidan o ya estan vinculados a este topic.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {isLoading ? (
             <div className="mx-auto max-w-[1800px] rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-10 text-center text-sm font-semibold text-orange-600">
