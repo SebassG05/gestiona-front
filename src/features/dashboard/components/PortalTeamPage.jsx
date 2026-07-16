@@ -161,6 +161,14 @@ const countInclusiveDays = (startDate, endDate) => {
   return Math.floor((end - start) / 86400000) + 1;
 };
 
+const formatShortDate = (value) => {
+  if (!value) return 'Sin fecha';
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: 'short',
+  }).format(parseActivityDate(value));
+};
+
 const isDateInVacation = (value, vacation) =>
   vacation?.startDate <= value && vacation?.endDate >= value;
 
@@ -544,9 +552,10 @@ const PortalTeamPage = () => {
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, ease: 'easeOut' }}
-              className="rounded-[24px] border border-orange-100 bg-white/95 p-6 shadow-sm"
+              layout
+              className="overflow-hidden rounded-[26px] border border-orange-100 bg-white/95 shadow-sm"
             >
-              <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-4 p-6 pb-4">
                 <div className="flex items-start gap-4">
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
                     <Umbrella size={22} />
@@ -563,74 +572,159 @@ const PortalTeamPage = () => {
                     </p>
                   </div>
                 </div>
-                <span className="rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-black text-[#ff5a1f]">
-                  {vacationRequestedDays} dias seleccionados
-                </span>
-              </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="text-sm font-bold">Inicio</span>
-                  <input
-                    type="date"
-                    name="startDate"
-                    min={minWorkDate}
-                    value={vacationForm.startDate}
-                    onChange={handleVacationChange}
-                    className="mt-2 h-12 w-full rounded-2xl border border-orange-200 bg-white px-4 text-sm outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-bold">Fin</span>
-                  <input
-                    type="date"
-                    name="endDate"
-                    min={vacationForm.startDate || minWorkDate}
-                    value={vacationForm.endDate}
-                    onChange={handleVacationChange}
-                    className="mt-2 h-12 w-full rounded-2xl border border-orange-200 bg-white px-4 text-sm outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
-                  />
-                </label>
-              </div>
-
-              {vacationError && (
-                <motion.p
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600"
+                <motion.span
+                  key={vacationRequestedDays}
+                  initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-black text-[#ff5a1f]"
                 >
-                  {vacationError}
-                </motion.p>
-              )}
+                  {vacationRequestedDays} {vacationRequestedDays === 1 ? 'dia' : 'dias'} seleccionados
+                </motion.span>
+              </div>
 
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
-                <div className="flex flex-wrap gap-2">
-                  {currentUserVacations.length === 0 ? (
-                    <span className="rounded-full border border-dashed border-orange-200 px-4 py-2 text-sm text-[#ff8a3d]">
-                      Aun no tienes vacaciones guardadas.
-                    </span>
-                  ) : (
-                    currentUserVacations.map((vacation) => (
-                      <span
-                        key={vacation.id || vacation._id}
-                        className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-2 text-sm font-black text-[#3b1208]"
-                      >
-                        <span
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: vacation.color || currentUserColor }}
-                        />
-                        {vacation.startDate} - {vacation.endDate}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteVacation(vacation.id || vacation._id)}
-                          className="cursor-pointer rounded-full p-1 text-[#ff3048] transition hover:bg-red-50"
-                          aria-label="Quitar vacaciones"
-                        >
-                          <X size={14} />
-                        </button>
+              <div className="px-6">
+                <div className="grid items-stretch gap-4 md:grid-cols-[1fr_auto_1fr]">
+                  <label className="group block rounded-3xl border border-orange-100 bg-[#fffaf5] p-4 transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-sm">
+                    <span className="flex items-center justify-between gap-3 text-sm font-black text-[#3b1208]">
+                      Inicio
+                      <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-[#ff5a1f] shadow-sm">
+                        <CalendarDays size={17} />
                       </span>
-                    ))
-                  )}
+                    </span>
+                    <span className="mt-3 block text-2xl font-black text-[#3b1208]">
+                      {formatShortDate(vacationForm.startDate)}
+                    </span>
+                    <input
+                      type="date"
+                      name="startDate"
+                      min={minWorkDate}
+                      value={vacationForm.startDate}
+                      onChange={handleVacationChange}
+                      className="mt-3 h-11 w-full cursor-pointer rounded-2xl border border-orange-200 bg-white px-4 text-sm outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
+                    />
+                  </label>
+                  <div className="hidden min-w-24 flex-col items-center justify-center md:flex">
+                    <motion.span
+                      key={`range-${vacationRequestedDays}`}
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex h-14 w-14 items-center justify-center rounded-full border border-orange-100 bg-white text-lg font-black text-[#ff5a1f] shadow-sm"
+                    >
+                      {vacationRequestedDays}
+                    </motion.span>
+                    <span className="mt-2 text-center text-[10px] font-black uppercase text-[#ff8a3d]">
+                      dias
+                    </span>
+                  </div>
+                  <label className="group block rounded-3xl border border-orange-100 bg-[#fffaf5] p-4 transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-sm">
+                    <span className="flex items-center justify-between gap-3 text-sm font-black text-[#3b1208]">
+                      Fin
+                      <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-[#ff5a1f] shadow-sm">
+                        <CalendarDays size={17} />
+                      </span>
+                    </span>
+                    <span className="mt-3 block text-2xl font-black text-[#3b1208]">
+                      {formatShortDate(vacationForm.endDate)}
+                    </span>
+                    <input
+                      type="date"
+                      name="endDate"
+                      min={vacationForm.startDate || minWorkDate}
+                      value={vacationForm.endDate}
+                      onChange={handleVacationChange}
+                      className="mt-3 h-11 w-full cursor-pointer rounded-2xl border border-orange-200 bg-white px-4 text-sm outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
+                    />
+                  </label>
+                </div>
+
+                <motion.div
+                  layout
+                  className="mt-4 overflow-hidden rounded-3xl border border-orange-100 bg-white p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-wide text-[#ff5a1f]">
+                        Rango preparado
+                      </p>
+                      <p className="mt-1 text-sm font-black text-[#3b1208]">
+                        {formatShortDate(vacationForm.startDate)} - {formatShortDate(vacationForm.endDate)}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-orange-100 bg-[#fff8f1] px-3 py-1 text-xs font-black text-[#ff5a1f]">
+                      Se pintara con tu color
+                    </span>
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-orange-100">
+                    <motion.span
+                      className="block h-full rounded-full"
+                      style={{ backgroundColor: currentUserColor }}
+                      initial={false}
+                      animate={{
+                        width: `${Math.min((vacationRequestedDays / VACATION_TOTAL_DAYS) * 100, 100)}%`,
+                      }}
+                      transition={{ duration: 0.35, ease: 'easeOut' }}
+                    />
+                  </div>
+                </motion.div>
+              </div>
+
+              <AnimatePresence>
+                {vacationError && (
+                  <motion.p
+                    initial={{ opacity: 0, height: 0, y: -6 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -6 }}
+                    transition={{ duration: 0.22, ease: 'easeOut' }}
+                    className="mx-6 mt-4 overflow-hidden rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600"
+                  >
+                    {vacationError}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-orange-100 bg-[#fffaf5] px-6 py-5">
+                <div className="flex flex-wrap gap-2">
+                  <AnimatePresence initial={false}>
+                    {currentUserVacations.length === 0 ? (
+                      <motion.span
+                        key="empty-vacations"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        className="rounded-full border border-dashed border-orange-200 bg-white px-4 py-2 text-sm text-[#ff8a3d]"
+                      >
+                        Aun no tienes vacaciones guardadas.
+                      </motion.span>
+                    ) : (
+                      currentUserVacations.map((vacation) => (
+                        <motion.span
+                          layout
+                          key={vacation.id || vacation._id}
+                          initial={{ opacity: 0, scale: 0.92, y: 10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.9, y: -8 }}
+                          transition={{ duration: 0.2, ease: 'easeOut' }}
+                          className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-white px-3 py-2 text-sm font-black text-[#3b1208] shadow-sm"
+                        >
+                          <span
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: vacation.color || currentUserColor }}
+                          />
+                          {formatShortDate(vacation.startDate)} - {formatShortDate(vacation.endDate)}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteVacation(vacation.id || vacation._id)}
+                            className="cursor-pointer rounded-full p-1 text-[#ff3048] transition hover:bg-red-50"
+                            aria-label="Quitar vacaciones"
+                          >
+                            <X size={14} />
+                          </button>
+                        </motion.span>
+                      ))
+                    )}
+                  </AnimatePresence>
                 </div>
                 <button
                   type="submit"
