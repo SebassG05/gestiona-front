@@ -45,10 +45,14 @@ const LoginPage = () => {
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [privacyError, setPrivacyError] = useState("");
 
-  const inviteCode = useMemo(() => new URLSearchParams(location.search).get("invite") || "", [location.search]);
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const inviteCode = searchParams.get("invite") || "";
+  const sessionReason = searchParams.get("session") || "";
+  const redirectQuery = searchParams.get("redirect") || "";
+  const safeRedirect = redirectQuery.startsWith("/") && !redirectQuery.startsWith("//") ? redirectQuery : "/dashboard";
   const routeRedirect = location.state?.from
     ? `${location.state.from.pathname}${location.state.from.search || ""}`
-    : "/dashboard";
+    : safeRedirect;
   const postLoginRedirect = inviteCode ? `/dashboard/join?code=${encodeURIComponent(inviteCode)}` : routeRedirect;
   const postRegisterRedirect = inviteCode ? `/login?invite=${encodeURIComponent(inviteCode)}` : "/login";
 
@@ -172,6 +176,12 @@ const LoginPage = () => {
           {inviteCode && (
             <div className="mb-5 rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
               Has llegado desde una invitacion. Cuando inicies sesion te llevaremos directamente a <strong>Unirme a un portal</strong> con tu codigo.
+            </div>
+          )}
+
+          {sessionReason === "expired" && !inviteCode && (
+            <div className="mb-5 rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
+              Tu sesion ha caducado. Inicia sesion de nuevo para continuar.
             </div>
           )}
 

@@ -13,8 +13,9 @@ import PortalProposalsPage from '../features/dashboard/components/PortalProposal
 import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspacePage.jsx';
 import CookieBanner from '../features/legal/components/CookieBanner.jsx';
 import LegalPage from '../features/legal/components/LegalPage.jsx';
+import { hasValidSession } from '../utils/session.js';
 
-const hasSession = () => Boolean(localStorage.getItem('token'));
+const hasSession = () => hasValidSession();
 
 const ProtectedRoute = ({ children }) => {
   const location = useLocation();
