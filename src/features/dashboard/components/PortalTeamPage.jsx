@@ -741,33 +741,80 @@ const PortalTeamPage = () => {
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, ease: 'easeOut', delay: 0.05 }}
-              className="rounded-[24px] border border-orange-100 bg-[#fff8f1] p-6 shadow-sm"
+              layout
+              className="rounded-[26px] border border-orange-100 bg-[#fff8f1] p-6 shadow-sm"
             >
               <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">Leyenda</p>
               <h3 className="mt-1 text-xl font-black text-[#3b1208]">Dias disponibles</h3>
-              <div className="mt-5 rounded-3xl border border-orange-100 bg-white p-5">
-                <div className="flex items-end justify-between gap-3">
-                  <span className="text-5xl font-black text-[#3b1208]">{remainingVacationDays}</span>
-                  <span className="rounded-full border border-orange-100 bg-orange-50 px-3 py-1 text-xs font-black text-[#ff5a1f]">
-                    de {VACATION_TOTAL_DAYS}
-                  </span>
+              <div className="mt-5 rounded-3xl border border-orange-100 bg-white p-5 shadow-sm">
+                <div className="grid grid-cols-[1fr_auto] items-center gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wide text-[#ff8a3d]">
+                      Disponibles
+                    </p>
+                    <motion.span
+                      key={remainingVacationDays}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.22, ease: 'easeOut' }}
+                      className="mt-1 block text-5xl font-black leading-none text-[#3b1208]"
+                    >
+                      {remainingVacationDays}
+                    </motion.span>
+                  </div>
+                  <div className="rounded-2xl border border-orange-100 bg-[#fff8f1] px-4 py-3 text-center">
+                    <p className="text-[10px] font-black uppercase text-[#ff8a3d]">Total anual</p>
+                    <p className="mt-1 text-xl font-black text-[#3b1208]">{VACATION_TOTAL_DAYS}</p>
+                  </div>
                 </div>
                 <div className="mt-4 h-3 overflow-hidden rounded-full bg-orange-100">
-                  <span
+                  <motion.span
                     className="block h-full rounded-full bg-gradient-to-r from-[#ff5a1f] to-[#ff3048]"
-                    style={{ width: `${Math.min((usedVacationDays / VACATION_TOTAL_DAYS) * 100, 100)}%` }}
+                    initial={false}
+                    animate={{
+                      width: `${Math.min((usedVacationDays / VACATION_TOTAL_DAYS) * 100, 100)}%`,
+                    }}
+                    transition={{ duration: 0.35, ease: 'easeOut' }}
                   />
                 </div>
-                <p className="mt-3 text-sm font-bold text-[#ff5a1f]">
-                  {usedVacationDays} dias usados este año.
-                </p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-orange-100 bg-[#fffaf5] p-3">
+                    <p className="text-[10px] font-black uppercase text-[#ff8a3d]">Usados</p>
+                    <motion.p
+                      key={usedVacationDays}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="mt-1 text-lg font-black text-[#3b1208]"
+                    >
+                      {usedVacationDays}
+                    </motion.p>
+                  </div>
+                  <div className="rounded-2xl border border-orange-100 bg-[#fffaf5] p-3">
+                    <p className="text-[10px] font-black uppercase text-[#ff8a3d]">Seleccion</p>
+                    <motion.p
+                      key={vacationRequestedDays}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="mt-1 text-lg font-black text-[#3b1208]"
+                    >
+                      {vacationRequestedDays}
+                    </motion.p>
+                  </div>
+                </div>
               </div>
               <div className="mt-4 rounded-3xl border border-orange-100 bg-white p-4 text-sm text-[#3b1208]">
-                <span
-                  className="mr-2 inline-block h-3 w-8 rounded-full align-middle"
-                  style={{ backgroundColor: currentUserColor }}
-                />
-                Este sera tu color para vacaciones y actividad.
+                <div className="flex items-center gap-3">
+                  <motion.span
+                    className="inline-block h-4 w-10 rounded-full"
+                    style={{ backgroundColor: currentUserColor }}
+                    initial={{ scaleX: 0.4, opacity: 0 }}
+                    animate={{ scaleX: 1, opacity: 1 }}
+                    transition={{ duration: 0.28, ease: 'easeOut' }}
+                  />
+                  <span>Este sera tu color para vacaciones y actividad.</span>
+                </div>
               </div>
             </motion.aside>
           </section>
