@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Umbrella,
   UserRound,
   Users,
   X,
@@ -24,6 +25,11 @@ import {
   getTeamActivities,
   updateTeamActivity,
 } from '../services/teamActivityService.js';
+import {
+  createTeamVacation,
+  deleteTeamVacation,
+  getTeamVacations,
+} from '../services/teamVacationService.js';
 import PortalSidebar from './PortalSidebar.jsx';
 
 const STATUS_OPTIONS = [
@@ -45,6 +51,17 @@ const PRIORITY_OPTIONS = [
 ];
 
 const DEFAULT_ACTIVITY_COLOR = '#ff5a1f';
+const VACATION_TOTAL_DAYS = 15;
+const USER_ACTIVITY_COLORS = [
+  '#ff5a1f',
+  '#ff3048',
+  '#f59e0b',
+  '#10b981',
+  '#06b6d4',
+  '#8b5cf6',
+  '#ec4899',
+  '#3b1208',
+];
 
 const emptyForm = {
   title: '',
@@ -71,6 +88,14 @@ const getMonthRange = (date) => {
     endDate: toDateInputValue(last),
   };
 };
+
+const getYearRange = (date) => ({
+  startDate: toDateInputValue(new Date(date.getFullYear(), 0, 1)),
+  endDate: toDateInputValue(new Date(date.getFullYear(), 11, 31)),
+});
+
+const getMonthEndValue = (date) =>
+  toDateInputValue(new Date(date.getFullYear(), date.getMonth() + 1, 0));
 
 const buildCalendarDays = (monthDate) => {
   const year = monthDate.getFullYear();
@@ -111,38 +136,83 @@ const getStoredUser = () => {
   }
 };
 
+const getUserId = (user) => user?._id || user?.id || user?.userId || '';
+
+const getUserLabel = (user) => user?.username || user?.name || user?.email || 'Usuario';
+
+const getInitials = (value) => {
+  const source = String(value || 'U').trim();
+  const cleanSource = source.includes('@') ? source.split('@')[0] : source;
+  const parts = cleanSource.split(/[\s._-]+/).filter(Boolean);
+  const initials = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : cleanSource.slice(0, 2);
+  return initials.toUpperCase();
+};
+
+const getUserColor = (value) => {
+  const source = String(value || 'usuario');
+  const sum = Array.from(source).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return USER_ACTIVITY_COLORS[sum % USER_ACTIVITY_COLORS.length];
+};
+
+const countInclusiveDays = (startDate, endDate) => {
+  if (!startDate || !endDate || startDate > endDate) return 0;
+  const start = parseActivityDate(startDate);
+  const end = parseActivityDate(endDate);
+  return Math.floor((end - start) / 86400000) + 1;
+};
+
+const isDateInVacation = (value, vacation) =>
+  vacation?.startDate <= value && vacation?.endDate >= value;
+
+const startsVacationSegment = (value, vacation, date) =>
+  vacation.startDate === value || date.getDay() === 1 || date.getDate() === 1;
+
+const endsVacationSegment = (value, vacation, date) =>
+  vacation.endDate === value || date.getDay() === 0 || value === getMonthEndValue(date);
+
 const PortalTeamPage = () => {
   const { portalId } = useParams();
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [vacations, setVacations] = useState([]);
   const [selectedDate, setSelectedDate] = useState(toDateInputValue(new Date()));
   const [monthCursor, setMonthCursor] = useState(new Date());
   const [form, setForm] = useState({ ...emptyForm, workDate: toDateInputValue(new Date()) });
+  const [vacationForm, setVacationForm] = useState({
+    startDate: toDateInputValue(new Date()),
+    endDate: toDateInputValue(new Date()),
+  });
   const [editingId, setEditingId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isVacationSaving, setIsVacationSaving] = useState(false);
   const [error, setError] = useState('');
+  const [vacationError, setVacationError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
 
   const currentUser = useMemo(() => getStoredUser(), []);
   const currentUserLabel = currentUser.username || currentUser.name || currentUser.email || 'Tu usuario';
+  const currentUserId = getUserId(currentUser);
 
   const monthRange = useMemo(() => getMonthRange(monthCursor), [monthCursor]);
+  const vacationRange = useMemo(() => getYearRange(monthCursor), [monthCursor]);
 
   const loadTeamData = async () => {
     setIsLoading(true);
     setError('');
 
     try {
-      const [membersResponse, activitiesResponse] = await Promise.all([
+      const [membersResponse, activitiesResponse, vacationsResponse] = await Promise.all([
         getPortalMembers(portalId),
         getTeamActivities({ portalId, ...monthRange }),
+        getTeamVacations({ portalId, ...vacationRange }),
       ]);
 
       const nextMembers = membersResponse.data || [];
       setMembers(nextMembers);
-      setActivities(activitiesResponse.data || []);
+      setActivities(activitiesResponse.data || activitiesResponse.activities || activitiesResponse || []);
+      setVacations(vacationsResponse.data || vacationsResponse.vacations || vacationsResponse || []);
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'No se pudo cargar la actividad del equipo');
     } finally {
@@ -153,7 +223,7 @@ const PortalTeamPage = () => {
   useEffect(() => {
     loadTeamData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portalId, monthRange.startDate, monthRange.endDate]);
+  }, [portalId, monthRange.startDate, monthRange.endDate, vacationRange.startDate, vacationRange.endDate]);
 
   const calendarDays = useMemo(() => buildCalendarDays(monthCursor), [monthCursor]);
 
@@ -167,11 +237,54 @@ const PortalTeamPage = () => {
     [activities]
   );
 
+  const vacationsByDate = useMemo(() => {
+    const grouped = {};
+    calendarDays.forEach(({ date }) => {
+      const key = toDateInputValue(date);
+      grouped[key] = vacations.filter((vacation) => isDateInVacation(key, vacation));
+    });
+    return grouped;
+  }, [calendarDays, vacations]);
+
   const selectedActivities = activitiesByDate[selectedDate] || [];
   const minWorkDate = todayValue();
   const isSelectedPastDate = selectedDate < minWorkDate;
   const todayActivities = activitiesByDate[minWorkDate] || [];
   const doneActivities = selectedActivities.filter((activity) => activity.status === 'done').length;
+  const currentUserColor = useMemo(() => {
+    const ownVacation = vacations.find((vacation) => {
+      const vacationUserId = getUserId(vacation.user);
+      return (
+        (currentUserId && vacationUserId === currentUserId) || vacation.user?.email === currentUser.email
+      );
+    });
+    const ownActivity = activities.find((activity) => {
+      const activityUserId = getUserId(activity.assignedTo);
+      return (
+        (currentUserId && activityUserId === currentUserId) ||
+        activity.assignedTo?.email === currentUser.email
+      );
+    });
+    return ownVacation?.color || ownActivity?.color || getUserColor(currentUserId || currentUser.email || currentUserLabel);
+  }, [activities, vacations, currentUserId, currentUser.email, currentUserLabel]);
+  const currentUserVacations = useMemo(
+    () =>
+      vacations.filter((vacation) => {
+        const vacationUserId = getUserId(vacation.user);
+        return (
+          (currentUserId && vacationUserId === currentUserId) ||
+          vacation.user?.email === currentUser.email
+        );
+      }),
+    [vacations, currentUserId, currentUser.email]
+  );
+  const usedVacationDays = currentUserVacations.reduce((total, vacation) => {
+    const start = vacation.startDate < vacationRange.startDate ? vacationRange.startDate : vacation.startDate;
+    const end = vacation.endDate > vacationRange.endDate ? vacationRange.endDate : vacation.endDate;
+    return total + countInclusiveDays(start, end);
+  }, 0);
+  const remainingVacationDays = Math.max(VACATION_TOTAL_DAYS - usedVacationDays, 0);
+  const vacationRequestedDays = countInclusiveDays(vacationForm.startDate, vacationForm.endDate);
 
   const resetForm = () => {
     setEditingId(null);
@@ -258,6 +371,70 @@ const PortalTeamPage = () => {
       setDeleteTarget(null);
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'No se pudo eliminar la actividad');
+    }
+  };
+
+  const handleVacationChange = (event) => {
+    const { name, value } = event.target;
+    setVacationForm((current) => {
+      const next = { ...current, [name]: value };
+      if (name === 'startDate' && value > next.endDate) next.endDate = value;
+      if (name === 'endDate' && value < next.startDate) next.startDate = value;
+      return next;
+    });
+    setVacationError('');
+  };
+
+  const handleVacationSubmit = async (event) => {
+    event.preventDefault();
+    setVacationError('');
+
+    if (!vacationForm.startDate || !vacationForm.endDate) {
+      setVacationError('Elige el inicio y el final de tus vacaciones.');
+      return;
+    }
+
+    if (vacationForm.startDate < minWorkDate) {
+      setVacationError('Las vacaciones deben empezar hoy o en una fecha futura.');
+      return;
+    }
+
+    if (vacationRequestedDays > remainingVacationDays) {
+      setVacationError(`Solo te quedan ${remainingVacationDays} dias disponibles.`);
+      return;
+    }
+
+    setIsVacationSaving(true);
+
+    try {
+      const response = await createTeamVacation({
+        portalId,
+        vacation: {
+          startDate: vacationForm.startDate,
+          endDate: vacationForm.endDate,
+          color: currentUserColor,
+        },
+      });
+      const savedVacation = response.data || response.vacation || response;
+      setVacations((current) => [...current, savedVacation]);
+      setVacationForm({ startDate: minWorkDate, endDate: minWorkDate });
+    } catch (requestError) {
+      setVacationError(requestError.response?.data?.message || 'No se pudieron guardar las vacaciones');
+    } finally {
+      setIsVacationSaving(false);
+    }
+  };
+
+  const handleDeleteVacation = async (vacationId) => {
+    setVacationError('');
+
+    try {
+      await deleteTeamVacation({ portalId, vacationId });
+      setVacations((current) =>
+        current.filter((vacation) => vacation.id !== vacationId && vacation._id !== vacationId)
+      );
+    } catch (requestError) {
+      setVacationError(requestError.response?.data?.message || 'No se pudieron eliminar las vacaciones');
     }
   };
 
@@ -360,6 +537,146 @@ const PortalTeamPage = () => {
               {error}
             </div>
           )}
+
+          <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <motion.form
+              onSubmit={handleVacationSubmit}
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              className="rounded-[24px] border border-orange-100 bg-white/95 p-6 shadow-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+                    <Umbrella size={22} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">
+                      Implementar vacaciones
+                    </p>
+                    <h2 className="mt-1 text-2xl font-black text-[#3b1208]">
+                      Planifica tus dias libres
+                    </h2>
+                    <p className="mt-1 text-sm text-[#ff5a1f]">
+                      Marca un rango y se vera como una linea continua con tu color en el calendario.
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-black text-[#ff5a1f]">
+                  {vacationRequestedDays} dias seleccionados
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-bold">Inicio</span>
+                  <input
+                    type="date"
+                    name="startDate"
+                    min={minWorkDate}
+                    value={vacationForm.startDate}
+                    onChange={handleVacationChange}
+                    className="mt-2 h-12 w-full rounded-2xl border border-orange-200 bg-white px-4 text-sm outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-bold">Fin</span>
+                  <input
+                    type="date"
+                    name="endDate"
+                    min={vacationForm.startDate || minWorkDate}
+                    value={vacationForm.endDate}
+                    onChange={handleVacationChange}
+                    className="mt-2 h-12 w-full rounded-2xl border border-orange-200 bg-white px-4 text-sm outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
+                  />
+                </label>
+              </div>
+
+              {vacationError && (
+                <motion.p
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600"
+                >
+                  {vacationError}
+                </motion.p>
+              )}
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap gap-2">
+                  {currentUserVacations.length === 0 ? (
+                    <span className="rounded-full border border-dashed border-orange-200 px-4 py-2 text-sm text-[#ff8a3d]">
+                      Aun no tienes vacaciones guardadas.
+                    </span>
+                  ) : (
+                    currentUserVacations.map((vacation) => (
+                      <span
+                        key={vacation.id || vacation._id}
+                        className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-2 text-sm font-black text-[#3b1208]"
+                      >
+                        <span
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: vacation.color || currentUserColor }}
+                        />
+                        {vacation.startDate} - {vacation.endDate}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteVacation(vacation.id || vacation._id)}
+                          className="cursor-pointer rounded-full p-1 text-[#ff3048] transition hover:bg-red-50"
+                          aria-label="Quitar vacaciones"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={isVacationSaving}
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5a1f] to-[#ff3048] px-6 py-3 text-sm font-black text-white shadow-lg shadow-orange-200 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isVacationSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+                  Guardar vacaciones
+                </button>
+              </div>
+            </motion.form>
+
+            <motion.aside
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: 'easeOut', delay: 0.05 }}
+              className="rounded-[24px] border border-orange-100 bg-[#fff8f1] p-6 shadow-sm"
+            >
+              <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">Leyenda</p>
+              <h3 className="mt-1 text-xl font-black text-[#3b1208]">Dias disponibles</h3>
+              <div className="mt-5 rounded-3xl border border-orange-100 bg-white p-5">
+                <div className="flex items-end justify-between gap-3">
+                  <span className="text-5xl font-black text-[#3b1208]">{remainingVacationDays}</span>
+                  <span className="rounded-full border border-orange-100 bg-orange-50 px-3 py-1 text-xs font-black text-[#ff5a1f]">
+                    de {VACATION_TOTAL_DAYS}
+                  </span>
+                </div>
+                <div className="mt-4 h-3 overflow-hidden rounded-full bg-orange-100">
+                  <span
+                    className="block h-full rounded-full bg-gradient-to-r from-[#ff5a1f] to-[#ff3048]"
+                    style={{ width: `${Math.min((usedVacationDays / VACATION_TOTAL_DAYS) * 100, 100)}%` }}
+                  />
+                </div>
+                <p className="mt-3 text-sm font-bold text-[#ff5a1f]">
+                  {usedVacationDays} dias usados este año.
+                </p>
+              </div>
+              <div className="mt-4 rounded-3xl border border-orange-100 bg-white p-4 text-sm text-[#3b1208]">
+                <span
+                  className="mr-2 inline-block h-3 w-8 rounded-full align-middle"
+                  style={{ backgroundColor: currentUserColor }}
+                />
+                Este sera tu color para vacaciones y actividad.
+              </div>
+            </motion.aside>
+          </section>
 
           <section
             className={`grid items-start gap-6 transition-all duration-300 ${
@@ -569,6 +886,7 @@ const PortalTeamPage = () => {
                 {calendarDays.map(({ date, isCurrentMonth }) => {
                   const value = toDateInputValue(date);
                   const dayActivities = activitiesByDate[value] || [];
+                  const dayVacations = vacationsByDate[value] || [];
                   const isSelected = value === selectedDate;
 
                   return (
@@ -591,19 +909,50 @@ const PortalTeamPage = () => {
                           {dayActivities.length}
                         </span>
                       )}
-                      <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1">
-                        {dayActivities.slice(0, 4).map((activity) => (
-                          <motion.span
-                            key={activity.id}
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="h-2.5 w-2.5 rounded-full shadow-sm"
-                            style={{ backgroundColor: activity.color || DEFAULT_ACTIVITY_COLOR }}
-                            title={`${activity.assignedTo?.username || activity.assignedTo?.email || 'Usuario'} - ${
-                              activity.title
-                            }`}
-                          />
-                        ))}
+                      {dayVacations.length > 0 && (
+                        <div className="pointer-events-none absolute left-0 right-0 top-10 space-y-1">
+                          {dayVacations.slice(0, 2).map((vacation) => {
+                            const vacationKey = vacation.id || vacation._id;
+                            const vacationUserLabel = getUserLabel(vacation.user);
+                            const vacationColor =
+                              vacation.color || getUserColor(getUserId(vacation.user) || vacationUserLabel);
+                            const starts = startsVacationSegment(value, vacation, date);
+                            const ends = endsVacationSegment(value, vacation, date);
+
+                            return (
+                              <span
+                                key={vacationKey}
+                                className={`block h-5 px-2 text-[10px] font-black leading-5 text-white shadow-sm ${
+                                  starts ? 'ml-2 rounded-l-full' : ''
+                                } ${ends ? 'mr-2 rounded-r-full' : ''}`}
+                                style={{ backgroundColor: vacationColor }}
+                                title={`${vacationUserLabel} de vacaciones`}
+                              >
+                                {starts ? 'Vacaciones' : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">
+                        {dayActivities.slice(0, 4).map((activity) => {
+                          const personLabel = getUserLabel(activity.assignedTo || activity.createdBy || currentUser);
+                          const markerColor =
+                            activity.color || getUserColor(getUserId(activity.assignedTo) || personLabel);
+
+                          return (
+                            <motion.span
+                              key={activity.id}
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-black text-white shadow-sm"
+                              style={{ backgroundColor: markerColor }}
+                              title={`${personLabel} - ${activity.title}`}
+                            >
+                              {getInitials(personLabel)}
+                            </motion.span>
+                          );
+                        })}
                       </div>
                     </motion.button>
                   );
