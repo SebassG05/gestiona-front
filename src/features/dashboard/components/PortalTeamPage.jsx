@@ -13,6 +13,7 @@ import {
   Trash2,
   UserRound,
   Users,
+  X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -43,11 +44,12 @@ const PRIORITY_OPTIONS = [
   { value: 'urgent', label: 'Urgente', className: 'bg-red-600 text-white border-red-700' },
 ];
 
+const DEFAULT_ACTIVITY_COLOR = '#ff5a1f';
+
 const emptyForm = {
   title: '',
   description: '',
   workDate: '',
-  assignedTo: '',
   status: 'in_progress',
   priority: 'medium',
 };
@@ -101,11 +103,11 @@ const statusMeta = (value) => STATUS_OPTIONS.find((item) => item.value === value
 const priorityMeta = (value) =>
   PRIORITY_OPTIONS.find((item) => item.value === value) || PRIORITY_OPTIONS[1];
 
-const getStoredUserId = () => {
+const getStoredUser = () => {
   try {
-    return JSON.parse(localStorage.getItem('user') || '{}')?.id || '';
+    return JSON.parse(localStorage.getItem('user') || '{}') || {};
   } catch {
-    return '';
+    return {};
   }
 };
 
@@ -121,8 +123,10 @@ const PortalTeamPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
 
-  const currentUserId = useMemo(() => getStoredUserId(), []);
+  const currentUser = useMemo(() => getStoredUser(), []);
+  const currentUserLabel = currentUser.username || currentUser.name || currentUser.email || 'Tu usuario';
 
   const monthRange = useMemo(() => getMonthRange(monthCursor), [monthCursor]);
 
@@ -139,12 +143,6 @@ const PortalTeamPage = () => {
       const nextMembers = membersResponse.data || [];
       setMembers(nextMembers);
       setActivities(activitiesResponse.data || []);
-
-      const defaultMember = nextMembers.find((member) => member.id === currentUserId) || nextMembers[0];
-      setForm((current) => ({
-        ...current,
-        assignedTo: current.assignedTo || defaultMember?.id || '',
-      }));
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'No se pudo cargar la actividad del equipo');
     } finally {
@@ -176,13 +174,21 @@ const PortalTeamPage = () => {
   const doneActivities = selectedActivities.filter((activity) => activity.status === 'done').length;
 
   const resetForm = () => {
-    const defaultMember = members.find((member) => member.id === currentUserId) || members[0];
     setEditingId(null);
     setForm({
       ...emptyForm,
       workDate: selectedDate,
-      assignedTo: defaultMember?.id || '',
     });
+  };
+
+  const handleOpenTaskForm = () => {
+    if (!editingId) {
+      setForm((current) => ({
+        ...current,
+        workDate: isSelectedPastDate ? minWorkDate : selectedDate,
+      }));
+    }
+    setIsTaskFormOpen(true);
   };
 
   const handleSubmit = async (event) => {
@@ -206,7 +212,6 @@ const PortalTeamPage = () => {
         title: form.title.trim(),
         description: form.description.trim(),
         workDate: form.workDate,
-        assignedTo: form.assignedTo,
         status: form.status,
         priority: form.priority,
       };
@@ -222,6 +227,7 @@ const PortalTeamPage = () => {
       });
       setSelectedDate(toDateInputValue(parseActivityDate(savedActivity.workDate)));
       resetForm();
+      setIsTaskFormOpen(false);
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'No se pudo guardar la actividad');
     } finally {
@@ -231,11 +237,11 @@ const PortalTeamPage = () => {
 
   const handleEdit = (activity) => {
     setEditingId(activity.id);
+    setIsTaskFormOpen(true);
     setForm({
       title: activity.title,
       description: activity.description || '',
       workDate: toDateInputValue(parseActivityDate(activity.workDate)),
-      assignedTo: activity.assignedTo?.id || '',
       status: activity.status,
       priority: activity.priority,
     });
@@ -355,24 +361,51 @@ const PortalTeamPage = () => {
             </div>
           )}
 
-          <section className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(430px,1.05fr)]">
-            <form
-              onSubmit={handleSubmit}
-              className="rounded-[24px] border border-orange-100 bg-white/95 p-6 shadow-sm"
-            >
-              <div className="flex items-start gap-4">
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
-                  <Pencil size={21} />
-                </span>
-                <div>
-                  <h2 className="text-2xl font-black">
-                    {editingId ? 'Actualizar actividad' : 'Que estas haciendo'}
-                  </h2>
-                  <p className="mt-1 text-sm text-[#ff5a1f]">
-                    Guarda tu foco del dia para que el equipo lo vea al momento.
-                  </p>
-                </div>
-              </div>
+          <section
+            className={`grid items-start gap-6 transition-all duration-300 ${
+              isTaskFormOpen
+                ? 'xl:grid-cols-[minmax(0,0.95fr)_minmax(430px,1.05fr)]'
+                : 'xl:grid-cols-1'
+            }`}
+          >
+            <AnimatePresence initial={false}>
+              {isTaskFormOpen && (
+                <motion.form
+                  key="team-activity-form"
+                  onSubmit={handleSubmit}
+                  initial={{ opacity: 0, x: -18, scale: 0.98 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: -16, scale: 0.98 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  className="self-start rounded-[24px] border border-orange-100 bg-white/95 p-6 shadow-sm xl:min-h-[632px]"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+                        <Pencil size={21} />
+                      </span>
+                      <div>
+                        <h2 className="text-2xl font-black">
+                          {editingId ? 'Actualizar actividad' : 'Que estas haciendo'}
+                        </h2>
+                        <p className="mt-1 text-sm text-[#ff5a1f]">
+                          Guarda tu foco del dia para que el equipo lo vea al momento.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetForm();
+                        setIsTaskFormOpen(false);
+                      }}
+                      className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-orange-200 bg-white text-[#8b2f12] shadow-sm transition hover:-translate-y-0.5 hover:bg-orange-50"
+                      title="Ocultar formulario"
+                      aria-label="Ocultar formulario"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
 
               <div className="mt-6 space-y-4">
                 <label className="block">
@@ -409,22 +442,8 @@ const PortalTeamPage = () => {
 
                   <label className="block">
                     <span className="text-sm font-bold">Persona</span>
-                    <div className="relative mt-2">
-                      <select
-                        value={form.assignedTo}
-                        onChange={(event) => setForm({ ...form, assignedTo: event.target.value })}
-                        className="w-full cursor-pointer appearance-none rounded-2xl border border-orange-200 bg-[#fffaf5] px-4 py-3 pr-11 text-sm font-semibold text-[#3b1208] outline-none transition hover:border-orange-300 hover:bg-white focus:border-[#ff5a1f] focus:bg-white focus:ring-4 focus:ring-orange-100"
-                      >
-                        {members.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {member.username || member.email}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown
-                        size={18}
-                        className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#ff5a1f]"
-                      />
+                    <div className="mt-2 w-full rounded-2xl border border-orange-200 bg-white px-4 py-3 text-sm text-[#3b1208]">
+                      <p className="truncate">{currentUserLabel}</p>
                     </div>
                   </label>
 
@@ -489,9 +508,15 @@ const PortalTeamPage = () => {
                   {editingId ? 'Actualizar' : 'Guardar actividad'}
                 </button>
               </div>
-            </form>
+                </motion.form>
+              )}
+            </AnimatePresence>
 
-            <section className="rounded-[24px] border border-orange-100 bg-white/95 p-6 shadow-sm">
+            <section
+              className={`relative self-start overflow-visible rounded-[24px] border border-orange-100 bg-white/95 p-6 shadow-sm ${
+                isSelectedPastDate ? '' : 'xl:min-h-[632px]'
+              }`}
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
@@ -503,6 +528,15 @@ const PortalTeamPage = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenTaskForm}
+                    className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-orange-200 bg-gradient-to-r from-[#ff5a00] to-[#ff3048] text-white shadow-sm shadow-orange-100 transition hover:-translate-y-0.5 hover:shadow-md"
+                    title="Crear tarea"
+                    aria-label="Crear tarea"
+                  >
+                    <Plus size={18} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => changeMonth(-1)}
@@ -545,11 +579,11 @@ const PortalTeamPage = () => {
                       whileTap={{ scale: 0.97 }}
                       animate={isSelected ? { scale: 1.02 } : { scale: 1 }}
                       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                      className={`relative min-h-24 cursor-pointer overflow-hidden rounded-2xl border p-3 text-left transition ${
+                      className={`relative cursor-pointer overflow-hidden rounded-2xl border p-3 text-left transition ${
                         isSelected
                           ? 'border-[#ff5a1f] bg-[#fff3e7] shadow-sm'
                           : 'border-orange-100 bg-white hover:border-orange-300 hover:bg-orange-50/60'
-                      } ${!isCurrentMonth ? 'opacity-45' : ''}`}
+                      } ${isTaskFormOpen ? 'min-h-24' : 'min-h-28'} ${!isCurrentMonth ? 'opacity-45' : ''}`}
                     >
                       <span className="absolute left-3 top-3 text-sm font-black">{date.getDate()}</span>
                       {dayActivities.length > 0 && (
@@ -563,12 +597,10 @@ const PortalTeamPage = () => {
                             key={activity.id}
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
-                            className={`h-2.5 w-2.5 rounded-full ${
-                              activity.status === 'done'
-                                ? 'bg-emerald-400'
-                                : activity.status === 'blocked'
-                                  ? 'bg-rose-400'
-                                  : 'bg-[#ff5a1f]'
+                            className="h-2.5 w-2.5 rounded-full shadow-sm"
+                            style={{ backgroundColor: activity.color || DEFAULT_ACTIVITY_COLOR }}
+                            title={`${activity.assignedTo?.username || activity.assignedTo?.email || 'Usuario'} - ${
+                              activity.title
                             }`}
                           />
                         ))}
@@ -581,9 +613,10 @@ const PortalTeamPage = () => {
               <AnimatePresence>
                 {isSelectedPastDate && (
                   <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
+                    initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                     className="mt-5 flex items-start gap-3 rounded-2xl border border-red-100 bg-gradient-to-r from-red-50 to-orange-50 px-4 py-3 text-sm shadow-sm"
                   >
                     <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-red-500 shadow-sm">
@@ -652,9 +685,17 @@ const PortalTeamPage = () => {
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div>
-                              <p className="text-sm font-bold text-[#ff5a1f]">
-                                {activity.assignedTo?.username || activity.assignedTo?.email}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="h-3 w-3 rounded-full shadow-sm"
+                                  style={{
+                                    backgroundColor: activity.color || DEFAULT_ACTIVITY_COLOR,
+                                  }}
+                                />
+                                <p className="text-sm font-bold text-[#ff5a1f]">
+                                  {activity.assignedTo?.username || activity.assignedTo?.email}
+                                </p>
+                              </div>
                               <h3 className="mt-1 text-xl font-black">{activity.title}</h3>
                             </div>
                             <div className="flex gap-2">
