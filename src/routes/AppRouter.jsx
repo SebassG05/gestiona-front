@@ -9,6 +9,7 @@ import PortalOpportunitiesPage from '../features/dashboard/components/PortalOppo
 import PortalProjectsPage from '../features/dashboard/components/PortalProjectsPage.jsx';
 import PortalSettingsPage from '../features/dashboard/components/PortalSettingsPage.jsx';
 import PortalTeamPage from '../features/dashboard/components/PortalTeamPage.jsx';
+import PortalBusinessTripsPage from '../features/dashboard/components/PortalBusinessTripsPage.jsx';
 import ProposalContactsPage from '../features/dashboard/components/ProposalContactsPage.jsx';
 import PortalProposalsPage from '../features/dashboard/components/PortalProposalsPage.jsx';
 import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspacePage.jsx';
@@ -133,6 +134,22 @@ const AppRouter = () => {
           element={
             <ProtectedRoute>
               <PortalTeamPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/team/trips"
+          element={
+            <ProtectedRoute>
+              <PortalBusinessTripsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/trips"
+          element={
+            <ProtectedRoute>
+              <PortalBusinessTripsPage />
             </ProtectedRoute>
           }
         />

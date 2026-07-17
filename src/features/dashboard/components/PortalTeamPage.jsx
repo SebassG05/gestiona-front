@@ -10,7 +10,9 @@ import {
   Loader2,
   Landmark,
   MessageSquare,
+  MapPin,
   Pencil,
+  PlaneTakeoff,
   Plus,
   SendHorizontal,
   Trash2,
@@ -20,7 +22,8 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import { getBusinessTrips } from '../services/businessTripService.js';
 import { getPortalMembers } from '../services/portalService.js';
 import {
   addTeamActivityComment,
@@ -36,6 +39,8 @@ import {
   getTeamVacations,
 } from '../services/teamVacationService.js';
 import PortalSidebar from './PortalSidebar.jsx';
+
+const MotionLink = motion.create(Link);
 
 const STATUS_OPTIONS = [
   { value: 'planned', label: 'Planificado', className: 'bg-sky-50 text-sky-700 border-sky-200' },
@@ -94,6 +99,7 @@ const emptyForm = {
   title: '',
   description: '',
   workDate: '',
+  assignedTo: '',
   status: 'in_progress',
   priority: 'medium',
 };
@@ -299,6 +305,9 @@ const belongsToPerson = (user, person) => {
 const isDateInVacation = (value, vacation) =>
   vacation?.startDate <= value && vacation?.endDate >= value;
 
+const isDateInTrip = (value, trip) =>
+  trip?.status !== 'Cancelado' && trip?.startDate <= value && trip?.endDate >= value;
+
 const startsVacationSegment = (value, vacation, date) =>
   vacation.startDate === value || date.getDay() === 1 || date.getDate() === 1;
 
@@ -310,6 +319,7 @@ const PortalTeamPage = () => {
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [vacations, setVacations] = useState([]);
+  const [trips, setTrips] = useState([]);
   const [selectedDate, setSelectedDate] = useState(toDateInputValue(new Date()));
   const [monthCursor, setMonthCursor] = useState(new Date());
   const [form, setForm] = useState({ ...emptyForm, workDate: toDateInputValue(new Date()) });
@@ -329,6 +339,7 @@ const PortalTeamPage = () => {
   const [commentDeleteTarget, setCommentDeleteTarget] = useState(null);
   const [commentError, setCommentError] = useState('');
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
+  const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
   const [personFilter, setPersonFilter] = useState('all');
   const personScrollerRef = useRef(null);
   const personDragRef = useRef({
@@ -340,7 +351,6 @@ const PortalTeamPage = () => {
   const personDragResetRef = useRef(null);
 
   const currentUser = useMemo(() => getStoredUser(), []);
-  const currentUserLabel = currentUser.username || currentUser.name || currentUser.email || 'Tu usuario';
   const currentUserId = getUserId(currentUser);
 
   const personOptions = useMemo(() => {
@@ -363,12 +373,13 @@ const PortalTeamPage = () => {
     members.forEach((member) => addPerson(member.user || member));
     activities.forEach((activity) => addPerson(activity.assignedTo || activity.createdBy));
     vacations.forEach((vacation) => addPerson(vacation.user));
+    trips.forEach((trip) => addPerson(trip.assignedTo));
     addPerson(currentUser);
 
     return Array.from(people.values()).sort((first, second) =>
       first.label.localeCompare(second.label, 'es')
     );
-  }, [activities, currentUser, members, vacations]);
+  }, [activities, currentUser, members, trips, vacations]);
 
   const getPersonColorForUser = (user) => {
     const id = getUserFilterId(user);
@@ -384,6 +395,10 @@ const PortalTeamPage = () => {
   }, [personFilter, personOptions]);
 
   const selectedPerson = personOptions.find((person) => person.id === personFilter);
+  const assignablePeople = personOptions.filter((person) =>
+    members.some((member) => getUserFilterId(member.user || member) === person.id)
+  );
+  const assignedPerson = assignablePeople.find((person) => person.id === form.assignedTo);
   const isPersonFiltered = personFilter !== 'all';
 
   const handlePersonDragStart = (event) => {
@@ -448,6 +463,11 @@ const PortalTeamPage = () => {
     return vacations.filter((vacation) => getUserFilterId(vacation.user) === personFilter);
   }, [isPersonFiltered, personFilter, vacations]);
 
+  const visibleTrips = useMemo(() => {
+    if (!isPersonFiltered) return trips;
+    return trips.filter((trip) => getUserFilterId(trip.assignedTo) === personFilter);
+  }, [isPersonFiltered, personFilter, trips]);
+
   const weeklySummary = useMemo(() => {
     const { startDate, endDate } = getWeekRange(new Date());
     const weekActivities = activities.filter((activity) => {
@@ -502,16 +522,18 @@ const PortalTeamPage = () => {
     setError('');
 
     try {
-      const [membersResponse, activitiesResponse, vacationsResponse] = await Promise.all([
+      const [membersResponse, activitiesResponse, vacationsResponse, tripsResponse] = await Promise.all([
         getPortalMembers(portalId),
         getTeamActivities({ portalId, ...monthRange }),
         getTeamVacations({ portalId, ...vacationRange }),
+        getBusinessTrips(portalId, monthRange),
       ]);
 
       const nextMembers = membersResponse.data || [];
       setMembers(nextMembers);
       setActivities(activitiesResponse.data || activitiesResponse.activities || activitiesResponse || []);
       setVacations(vacationsResponse.data || vacationsResponse.vacations || vacationsResponse || []);
+      setTrips(tripsResponse.data || tripsResponse.trips || tripsResponse || []);
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'No se pudo cargar la actividad del equipo');
     } finally {
@@ -555,7 +577,17 @@ const PortalTeamPage = () => {
     return grouped;
   }, [calendarDays, visibleVacations]);
 
+  const tripsByDate = useMemo(() => {
+    const grouped = {};
+    calendarDays.forEach(({ date }) => {
+      const key = toDateInputValue(date);
+      grouped[key] = visibleTrips.filter((trip) => isDateInTrip(key, trip));
+    });
+    return grouped;
+  }, [calendarDays, visibleTrips]);
+
   const selectedActivities = activitiesByDate[selectedDate] || [];
+  const selectedTrips = tripsByDate[selectedDate] || [];
   const selectedHoliday = holidaysByDate[selectedDate];
   const minWorkDate = todayValue();
   const isSelectedPastDate = selectedDate < minWorkDate;
@@ -583,9 +615,11 @@ const PortalTeamPage = () => {
 
   const resetForm = () => {
     setEditingId(null);
+    setIsAssigneeOpen(false);
     setForm({
       ...emptyForm,
       workDate: selectedDate,
+      assignedTo: currentUserId,
     });
   };
 
@@ -594,6 +628,7 @@ const PortalTeamPage = () => {
       setForm((current) => ({
         ...current,
         workDate: isSelectedPastDate ? minWorkDate : selectedDate,
+        assignedTo: current.assignedTo || currentUserId,
       }));
     }
     setIsTaskFormOpen(true);
@@ -613,6 +648,11 @@ const PortalTeamPage = () => {
       return;
     }
 
+    if (!form.assignedTo) {
+      setError('Selecciona una persona del portal para asignar la tarea');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -620,6 +660,7 @@ const PortalTeamPage = () => {
         title: form.title.trim(),
         description: form.description.trim(),
         workDate: form.workDate,
+        assignedTo: form.assignedTo,
         status: form.status,
         priority: form.priority,
       };
@@ -650,6 +691,7 @@ const PortalTeamPage = () => {
       title: activity.title,
       description: activity.description || '',
       workDate: toDateInputValue(parseActivityDate(activity.workDate)),
+      assignedTo: getUserId(activity.assignedTo),
       status: activity.status,
       priority: activity.priority,
     });
@@ -989,6 +1031,16 @@ const PortalTeamPage = () => {
                   Anota en que estas trabajando, consulta el foco de cada persona y revisa el
                   calendario diario del portal.
                 </p>
+                <MotionLink
+                  to={`/dashboard/portal/${portalId}/team/trips`}
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.96, y: 1 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a00] to-[#ff3048] px-4 py-2.5 text-sm font-black text-white shadow-md shadow-orange-100 transition hover:-translate-y-0.5 hover:shadow-lg"
+                >
+                  <PlaneTakeoff size={18} />
+                  Agregar viaje de empresa
+                </MotionLink>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="flex h-28 w-28 shrink-0 flex-col items-center justify-center rounded-2xl border border-orange-100 bg-[#fff8f1] p-4 text-center shadow-sm">
@@ -1651,12 +1703,71 @@ const PortalTeamPage = () => {
                     />
                   </label>
 
-                  <label className="block">
+                  <div className="relative block">
                     <span className="text-sm font-bold">Persona</span>
-                    <div className="mt-2 w-full rounded-2xl border border-orange-200 bg-white px-4 py-3 text-sm text-[#3b1208]">
-                      <p className="truncate">{currentUserLabel}</p>
-                    </div>
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsAssigneeOpen((open) => !open)}
+                      aria-haspopup="listbox"
+                      aria-expanded={isAssigneeOpen}
+                      className="mt-2 flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-orange-200 bg-[#fffaf5] px-4 py-3 text-left text-sm font-semibold outline-none transition hover:border-orange-300 hover:bg-white focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
+                    >
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full shadow-sm"
+                        style={{ backgroundColor: assignedPerson?.color || '#d6d3d1' }}
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        {assignedPerson?.label || 'Seleccionar persona'}
+                      </span>
+                      <ChevronDown
+                        size={18}
+                        className={`shrink-0 text-[#ff5a1f] transition ${isAssigneeOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                    <AnimatePresence>
+                      {isAssigneeOpen && (
+                        <motion.div
+                          role="listbox"
+                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                          transition={{ duration: 0.16 }}
+                          className="absolute left-0 right-0 top-full z-30 mt-2 max-h-56 overflow-y-auto rounded-2xl border border-orange-100 bg-white p-2 shadow-xl shadow-orange-100/60"
+                        >
+                          {assignablePeople.map((person) => (
+                            <button
+                              key={person.id}
+                              type="button"
+                              role="option"
+                              aria-selected={form.assignedTo === person.id}
+                              onClick={() => {
+                                setForm((current) => ({ ...current, assignedTo: person.id }));
+                                setIsAssigneeOpen(false);
+                              }}
+                              className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-orange-50 ${
+                                form.assignedTo === person.id ? 'bg-orange-50 font-black' : 'font-semibold'
+                              }`}
+                            >
+                              <span
+                                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-black text-white shadow-sm"
+                                style={{ backgroundColor: person.color }}
+                              >
+                                {person.initials}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate">{person.label}</span>
+                                {person.email && (
+                                  <span className="block truncate text-xs font-normal text-[#9a4a2f]">
+                                    {person.email}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
 
                   <label className="block">
                     <span className="text-sm font-bold">Estado</span>
@@ -1790,6 +1901,7 @@ const PortalTeamPage = () => {
                   const value = toDateInputValue(date);
                   const dayActivities = activitiesByDate[value] || [];
                   const dayVacations = vacationsByDate[value] || [];
+                  const dayTrips = tripsByDate[value] || [];
                   const holiday = holidaysByDate[value];
                   const isSelected = value === selectedDate;
 
@@ -1827,6 +1939,16 @@ const PortalTeamPage = () => {
                       {dayActivities.length > 0 && (
                         <span className="absolute right-2 top-2 rounded-full border border-orange-100 bg-white px-2 py-0.5 text-[10px] font-black text-[#ff5a1f] shadow-sm">
                           {dayActivities.length}
+                        </span>
+                      )}
+                      {dayTrips.length > 0 && (
+                        <span
+                          className="absolute right-2 top-9 inline-flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-black text-sky-700 shadow-sm"
+                          title={dayTrips.map((trip) => `${trip.title} - ${trip.destination}`).join(', ')}
+                        >
+                          <PlaneTakeoff size={10} />
+                          <span className="truncate">{dayTrips[0].destination}</span>
+                          {dayTrips.length > 1 && <span>+{dayTrips.length - 1}</span>}
                         </span>
                       )}
                       {dayVacations.length > 0 && (
@@ -1932,11 +2054,32 @@ const PortalTeamPage = () => {
                 )}
               </div>
               <span className="rounded-full border border-orange-200 bg-[#fff8f1] px-4 py-2 text-sm font-black text-[#ff5a1f]">
-                {selectedActivities.length} actividades
+                {selectedActivities.length} actividades · {selectedTrips.length} viajes
               </span>
             </div>
 
             <div className="p-6">
+              {selectedTrips.length > 0 && (
+                <div className="mb-5 grid gap-3 lg:grid-cols-2">
+                  {selectedTrips.map((trip) => (
+                    <Link
+                      key={trip.id}
+                      to={`/dashboard/portal/${portalId}/team/trips`}
+                      className="flex items-center gap-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 transition hover:border-sky-300 hover:bg-sky-50"
+                    >
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-sky-600 shadow-sm">
+                        <PlaneTakeoff size={19} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-black">{trip.title}</span>
+                        <span className="mt-1 flex items-center gap-1 truncate text-sm font-semibold text-sky-700">
+                          <MapPin size={13} /> {trip.destination} · {getUserLabel(trip.assignedTo)}
+                        </span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              )}
               {isLoading ? (
                 <div className="flex min-h-48 items-center justify-center text-[#ff5a1f]">
                   <Loader2 className="animate-spin" />
