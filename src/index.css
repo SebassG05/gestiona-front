@@ -37,3 +37,12 @@
 .gestiona-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+.gestiona-scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.gestiona-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}

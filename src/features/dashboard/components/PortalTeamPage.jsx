@@ -17,7 +17,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getPortalMembers } from '../services/portalService.js';
 import {
@@ -221,6 +221,8 @@ const getUserId = (user) => user?._id || user?.id || user?.userId || '';
 
 const getUserLabel = (user) => user?.username || user?.name || user?.email || 'Usuario';
 
+const getUserFilterId = (user) => getUserId(user) || user?.email || getUserLabel(user);
+
 const getInitials = (value) => {
   const source = String(value || 'U').trim();
   const cleanSource = source.includes('@') ? source.split('@')[0] : source;
@@ -279,10 +281,105 @@ const PortalTeamPage = () => {
   const [vacationError, setVacationError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
+  const [personFilter, setPersonFilter] = useState('all');
+  const personScrollerRef = useRef(null);
+  const personDragRef = useRef({
+    isDragging: false,
+    moved: false,
+    startX: 0,
+    scrollLeft: 0,
+  });
 
   const currentUser = useMemo(() => getStoredUser(), []);
   const currentUserLabel = currentUser.username || currentUser.name || currentUser.email || 'Tu usuario';
   const currentUserId = getUserId(currentUser);
+
+  const personOptions = useMemo(() => {
+    const people = new Map();
+
+    const addPerson = (user) => {
+      const id = getUserFilterId(user);
+      if (!id || people.has(id)) return;
+
+      const label = getUserLabel(user);
+      people.set(id, {
+        id,
+        label,
+        email: user?.email || '',
+        color: getUserColor(id),
+        initials: getInitials(label),
+      });
+    };
+
+    members.forEach((member) => addPerson(member.user || member));
+    activities.forEach((activity) => addPerson(activity.assignedTo || activity.createdBy));
+    vacations.forEach((vacation) => addPerson(vacation.user));
+    addPerson(currentUser);
+
+    return Array.from(people.values()).sort((first, second) =>
+      first.label.localeCompare(second.label, 'es')
+    );
+  }, [activities, currentUser, members, vacations]);
+
+  useEffect(() => {
+    if (personFilter !== 'all' && !personOptions.some((person) => person.id === personFilter)) {
+      setPersonFilter('all');
+    }
+  }, [personFilter, personOptions]);
+
+  const selectedPerson = personOptions.find((person) => person.id === personFilter);
+  const isPersonFiltered = personFilter !== 'all';
+
+  const handlePersonDragStart = (event) => {
+    if (event.button !== 0 || !personScrollerRef.current) return;
+
+    personDragRef.current = {
+      isDragging: true,
+      moved: false,
+      startX: event.clientX,
+      scrollLeft: personScrollerRef.current.scrollLeft,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePersonDragMove = (event) => {
+    const drag = personDragRef.current;
+    if (!drag.isDragging || !personScrollerRef.current) return;
+
+    const distance = event.clientX - drag.startX;
+    if (Math.abs(distance) > 5) {
+      drag.moved = true;
+    }
+
+    personScrollerRef.current.scrollLeft = drag.scrollLeft - distance;
+  };
+
+  const handlePersonDragEnd = (event) => {
+    if (!personDragRef.current.isDragging) return;
+    personDragRef.current.isDragging = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const handlePersonClickCapture = (event) => {
+    if (!personDragRef.current.moved) return;
+    event.preventDefault();
+    event.stopPropagation();
+    window.setTimeout(() => {
+      personDragRef.current.moved = false;
+    }, 0);
+  };
+
+  const visibleActivities = useMemo(() => {
+    if (!isPersonFiltered) return activities;
+    return activities.filter(
+      (activity) => getUserFilterId(activity.assignedTo || activity.createdBy) === personFilter
+    );
+  }, [activities, isPersonFiltered, personFilter]);
+
+  const visibleVacations = useMemo(() => {
+    if (!isPersonFiltered) return vacations;
+    return vacations.filter((vacation) => getUserFilterId(vacation.user) === personFilter);
+  }, [isPersonFiltered, personFilter, vacations]);
 
   const monthRange = useMemo(() => getMonthRange(monthCursor), [monthCursor]);
   const vacationRange = useMemo(() => getYearRange(monthCursor), [monthCursor]);
@@ -328,22 +425,22 @@ const PortalTeamPage = () => {
 
   const activitiesByDate = useMemo(
     () =>
-      activities.reduce((acc, activity) => {
+      visibleActivities.reduce((acc, activity) => {
         const key = toDateInputValue(parseActivityDate(activity.workDate));
         acc[key] = [...(acc[key] || []), activity];
         return acc;
       }, {}),
-    [activities]
+    [visibleActivities]
   );
 
   const vacationsByDate = useMemo(() => {
     const grouped = {};
     calendarDays.forEach(({ date }) => {
       const key = toDateInputValue(date);
-      grouped[key] = vacations.filter((vacation) => isDateInVacation(key, vacation));
+      grouped[key] = visibleVacations.filter((vacation) => isDateInVacation(key, vacation));
     });
     return grouped;
-  }, [calendarDays, vacations]);
+  }, [calendarDays, visibleVacations]);
 
   const selectedActivities = activitiesByDate[selectedDate] || [];
   const selectedHoliday = holidaysByDate[selectedDate];
@@ -910,6 +1007,101 @@ const PortalTeamPage = () => {
               </div>
             </motion.aside>
           </section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut', delay: 0.08 }}
+            className="rounded-[26px] border border-orange-100 bg-white/95 p-5 shadow-sm"
+          >
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-4">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+                  <Users size={21} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">
+                    Vista por persona
+                  </p>
+                  <h2 className="mt-1 text-2xl font-black text-[#3b1208]">
+                    {isPersonFiltered ? selectedPerson?.label || 'Persona seleccionada' : 'Todo el equipo'}
+                  </h2>
+                  <p className="mt-1 text-sm text-[#ff5a1f]">
+                    Filtra el calendario para revisar solo las tareas y vacaciones de un miembro concreto.
+                  </p>
+                </div>
+              </div>
+              <motion.span
+                key={personFilter}
+                initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="inline-flex w-fit items-center gap-2 rounded-full border border-orange-100 bg-[#fff8f1] px-4 py-2 text-sm font-black text-[#ff5a1f]"
+              >
+                {isPersonFiltered ? 'Vista individual' : `${personOptions.length} personas`}
+              </motion.span>
+            </div>
+
+            <div className="relative mt-5">
+              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-white/95 to-transparent" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-white/95 to-transparent" />
+              <div
+                ref={personScrollerRef}
+                onClickCapture={handlePersonClickCapture}
+                onPointerDown={handlePersonDragStart}
+                onPointerMove={handlePersonDragMove}
+                onPointerUp={handlePersonDragEnd}
+                onPointerCancel={handlePersonDragEnd}
+                className="gestiona-scrollbar-hidden flex cursor-grab select-none gap-3 overflow-x-auto px-1 py-1 active:cursor-grabbing"
+              >
+                <button
+                  type="button"
+                  onClick={() => setPersonFilter('all')}
+                  className={`inline-flex min-w-fit cursor-pointer items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black shadow-sm transition hover:-translate-y-0.5 ${
+                    personFilter === 'all'
+                      ? 'border-transparent bg-gradient-to-r from-[#ff5a1f] to-[#ff3048] text-white shadow-orange-200'
+                      : 'border-orange-100 bg-white text-[#3b1208] hover:border-orange-200'
+                  }`}
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/20">
+                    <Users size={16} />
+                  </span>
+                  Todo el equipo
+                </button>
+
+                {personOptions.map((person) => {
+                  const active = personFilter === person.id;
+                  return (
+                    <button
+                      type="button"
+                      key={person.id}
+                      onClick={() => setPersonFilter(person.id)}
+                      className={`inline-flex min-w-[210px] cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-black shadow-sm transition hover:-translate-y-0.5 ${
+                        active
+                          ? 'border-transparent bg-gradient-to-r from-[#ff5a1f] to-[#ff3048] text-white shadow-orange-200'
+                          : 'border-orange-100 bg-white text-[#3b1208] hover:border-orange-200'
+                      }`}
+                    >
+                      <span
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black text-white shadow-sm"
+                        style={{ backgroundColor: active ? 'rgba(255,255,255,0.22)' : person.color }}
+                      >
+                        {person.initials}
+                      </span>
+                      <span className="min-w-0 text-left">
+                        <span className="block truncate">{person.label}</span>
+                        {person.email && (
+                          <span className={`block truncate text-[11px] ${active ? 'text-white/80' : 'text-[#ff8a3d]'}`}>
+                            {person.email}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.section>
 
           <section
             className={`grid items-start gap-6 transition-all duration-300 ${
