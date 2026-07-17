@@ -252,6 +252,33 @@ const formatShortDate = (value) => {
   }).format(parseActivityDate(value));
 };
 
+const getWeekRange = (date = new Date()) => {
+  const target = parseActivityDate(toDateInputValue(date));
+  const mondayOffset = (target.getDay() + 6) % 7;
+  const start = addDays(target, -mondayOffset);
+  const end = addDays(start, 6);
+
+  return {
+    startDate: toDateInputValue(start),
+    endDate: toDateInputValue(end),
+  };
+};
+
+const rangesOverlap = (firstStart, firstEnd, secondStart, secondEnd) =>
+  firstStart <= secondEnd && firstEnd >= secondStart;
+
+const belongsToPerson = (user, person) => {
+  if (!user || !person) return false;
+  const userEmail = String(user.email || '').toLowerCase();
+  const personEmail = String(person.email || '').toLowerCase();
+
+  return (
+    getUserFilterId(user) === person.id ||
+    (userEmail && personEmail && userEmail === personEmail) ||
+    getUserLabel(user) === person.label
+  );
+};
+
 const isDateInVacation = (value, vacation) =>
   vacation?.startDate <= value && vacation?.endDate >= value;
 
@@ -289,6 +316,7 @@ const PortalTeamPage = () => {
     startX: 0,
     scrollLeft: 0,
   });
+  const personDragResetRef = useRef(null);
 
   const currentUser = useMemo(() => getStoredUser(), []);
   const currentUserLabel = currentUser.username || currentUser.name || currentUser.email || 'Tu usuario';
@@ -321,6 +349,13 @@ const PortalTeamPage = () => {
     );
   }, [activities, currentUser, members, vacations]);
 
+  const getPersonColorForUser = (user) => {
+    const id = getUserFilterId(user);
+    const matchedPerson = personOptions.find((person) => person.id === id);
+
+    return matchedPerson?.color || getUserColor(id || user?.email || getUserLabel(user));
+  };
+
   useEffect(() => {
     if (personFilter !== 'all' && !personOptions.some((person) => person.id === personFilter)) {
       setPersonFilter('all');
@@ -332,6 +367,10 @@ const PortalTeamPage = () => {
 
   const handlePersonDragStart = (event) => {
     if (event.button !== 0 || !personScrollerRef.current) return;
+    if (personDragResetRef.current) {
+      window.clearTimeout(personDragResetRef.current);
+      personDragResetRef.current = null;
+    }
 
     personDragRef.current = {
       isDragging: true,
@@ -347,10 +386,9 @@ const PortalTeamPage = () => {
     if (!drag.isDragging || !personScrollerRef.current) return;
 
     const distance = event.clientX - drag.startX;
-    if (Math.abs(distance) > 5) {
-      drag.moved = true;
-    }
+    if (!drag.moved && Math.abs(distance) < 8) return;
 
+    drag.moved = true;
     personScrollerRef.current.scrollLeft = drag.scrollLeft - distance;
   };
 
@@ -358,14 +396,22 @@ const PortalTeamPage = () => {
     if (!personDragRef.current.isDragging) return;
     personDragRef.current.isDragging = false;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
+
+    if (!personDragRef.current.moved) {
+      personDragResetRef.current = window.setTimeout(() => {
+        personDragRef.current.moved = false;
+        personDragResetRef.current = null;
+      }, 0);
+    }
   };
 
   const handlePersonClickCapture = (event) => {
     if (!personDragRef.current.moved) return;
     event.preventDefault();
     event.stopPropagation();
-    window.setTimeout(() => {
+    personDragResetRef.current = window.setTimeout(() => {
       personDragRef.current.moved = false;
+      personDragResetRef.current = null;
     }, 0);
   };
 
@@ -380,6 +426,52 @@ const PortalTeamPage = () => {
     if (!isPersonFiltered) return vacations;
     return vacations.filter((vacation) => getUserFilterId(vacation.user) === personFilter);
   }, [isPersonFiltered, personFilter, vacations]);
+
+  const weeklySummary = useMemo(() => {
+    const { startDate, endDate } = getWeekRange(new Date());
+    const weekActivities = activities.filter((activity) => {
+      if (!activity.workDate) return false;
+      const workDate = toDateInputValue(parseActivityDate(activity.workDate));
+      return workDate >= startDate && workDate <= endDate;
+    });
+    const weekVacations = vacations.filter((vacation) => {
+      if (!vacation.startDate || !vacation.endDate) return false;
+      return rangesOverlap(vacation.startDate, vacation.endDate, startDate, endDate);
+    });
+
+    const people = personOptions
+      .map((person) => {
+        const ownActivities = weekActivities.filter((activity) =>
+          belongsToPerson(activity.assignedTo || activity.createdBy, person)
+        );
+        const ownVacations = weekVacations.filter((vacation) => belongsToPerson(vacation.user, person));
+        const openActivities = ownActivities.filter((activity) => activity.status !== 'done');
+        const mainActivity = openActivities[0] || ownActivities[0] || null;
+
+        return {
+          ...person,
+          activities: ownActivities,
+          mainActivity,
+          openCount: openActivities.length,
+          totalCount: ownActivities.length,
+          vacations: ownVacations,
+        };
+      })
+      .sort(
+        (first, second) =>
+          second.totalCount - first.totalCount || first.label.localeCompare(second.label, 'es')
+      );
+
+    return {
+      startDate,
+      endDate,
+      rangeLabel: `${formatShortDate(startDate)} - ${formatShortDate(endDate)}`,
+      people,
+      busiest: people.find((person) => person.totalCount > 0) || null,
+      vacationPeople: people.filter((person) => person.vacations.length > 0),
+      totalActivities: weekActivities.length,
+    };
+  }, [activities, personOptions, vacations]);
 
   const monthRange = useMemo(() => getMonthRange(monthCursor), [monthCursor]);
   const vacationRange = useMemo(() => getYearRange(monthCursor), [monthCursor]);
@@ -448,22 +540,7 @@ const PortalTeamPage = () => {
   const isSelectedPastDate = selectedDate < minWorkDate;
   const todayActivities = activitiesByDate[minWorkDate] || [];
   const doneActivities = selectedActivities.filter((activity) => activity.status === 'done').length;
-  const currentUserColor = useMemo(() => {
-    const ownVacation = vacations.find((vacation) => {
-      const vacationUserId = getUserId(vacation.user);
-      return (
-        (currentUserId && vacationUserId === currentUserId) || vacation.user?.email === currentUser.email
-      );
-    });
-    const ownActivity = activities.find((activity) => {
-      const activityUserId = getUserId(activity.assignedTo);
-      return (
-        (currentUserId && activityUserId === currentUserId) ||
-        activity.assignedTo?.email === currentUser.email
-      );
-    });
-    return ownVacation?.color || ownActivity?.color || getUserColor(currentUserId || currentUser.email || currentUserLabel);
-  }, [activities, vacations, currentUserId, currentUser.email, currentUserLabel]);
+  const currentUserColor = getPersonColorForUser(currentUser);
   const currentUserVacations = useMemo(
     () =>
       vacations.filter((vacation) => {
@@ -899,7 +976,7 @@ const PortalTeamPage = () => {
                         >
                           <span
                             className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: vacation.color || currentUserColor }}
+                            style={{ backgroundColor: currentUserColor }}
                           />
                           {formatShortDate(vacation.startDate)} - {formatShortDate(vacation.endDate)}
                           <button
@@ -1056,6 +1133,7 @@ const PortalTeamPage = () => {
               >
                 <button
                   type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
                   onClick={() => setPersonFilter('all')}
                   className={`inline-flex min-w-fit cursor-pointer items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black shadow-sm transition hover:-translate-y-0.5 ${
                     personFilter === 'all'
@@ -1075,6 +1153,7 @@ const PortalTeamPage = () => {
                     <button
                       type="button"
                       key={person.id}
+                      onPointerDown={(event) => event.stopPropagation()}
                       onClick={() => setPersonFilter(person.id)}
                       className={`inline-flex min-w-[210px] cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-black shadow-sm transition hover:-translate-y-0.5 ${
                         active
@@ -1099,6 +1178,174 @@ const PortalTeamPage = () => {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+          </motion.section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut', delay: 0.1 }}
+            className="overflow-hidden rounded-[26px] border border-orange-100 bg-white/95 shadow-sm"
+          >
+            <div className="flex flex-col gap-4 border-b border-orange-100 p-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex items-start gap-4">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+                  <CalendarDays size={21} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">
+                    Resumen semanal
+                  </p>
+                  <h2 className="mt-1 text-2xl font-black text-[#3b1208]">
+                    Semana {weeklySummary.rangeLabel}
+                  </h2>
+                  <p className="mt-1 text-sm text-[#ff5a1f]">
+                    Foco del equipo, carga de trabajo y vacaciones en una vista rapida.
+                  </p>
+                </div>
+              </div>
+              <motion.span
+                key={weeklySummary.totalActivities}
+                initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="inline-flex w-fit items-center gap-2 rounded-full border border-orange-100 bg-[#fff8f1] px-4 py-2 text-sm font-black text-[#ff5a1f]"
+              >
+                {weeklySummary.totalActivities} actividades esta semana
+              </motion.span>
+            </div>
+
+            <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(220px,0.72fr)_minmax(260px,0.88fr)]">
+              <div className="rounded-3xl border border-orange-100 bg-[#fffaf5] p-4">
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-[#ff5a1f] shadow-sm">
+                    <Users size={18} />
+                  </span>
+                  <div>
+                    <h3 className="text-lg font-black text-[#3b1208]">Que hace cada persona</h3>
+                    <p className="text-xs font-semibold text-[#ff5a1f]">Actividad principal registrada.</p>
+                  </div>
+                </div>
+
+                {weeklySummary.people.length ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {weeklySummary.people.slice(0, 6).map((person) => (
+                      <motion.div
+                        key={person.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.22, ease: 'easeOut' }}
+                        className="flex items-center gap-3 rounded-2xl border border-orange-100 bg-white p-3 shadow-sm"
+                      >
+                        <span
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-black text-white shadow-sm"
+                          style={{ backgroundColor: person.color }}
+                        >
+                          {person.initials}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate font-black text-[#3b1208]">{person.label}</p>
+                            <span className="shrink-0 rounded-full bg-orange-50 px-2 py-1 text-xs font-black text-[#ff5a1f]">
+                              {person.totalCount}
+                            </span>
+                          </div>
+                          <p className="mt-1 truncate text-sm text-[#8b2f12]">
+                            {person.mainActivity?.title ||
+                              (person.vacations.length
+                                ? 'De vacaciones esta semana'
+                                : 'Sin actividad esta semana')}
+                          </p>
+                        </div>
+                      </motion.div>
+                    ))}
+
+                    {weeklySummary.people.length > 6 && (
+                      <div className="rounded-2xl border border-dashed border-orange-200 bg-white/70 p-3 text-sm font-black text-[#ff5a1f]">
+                        +{weeklySummary.people.length - 6} personas mas en el equipo.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-orange-200 p-4 text-sm font-bold text-[#ff5a1f]">
+                    Todavia no hay personas con actividad para esta semana.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-orange-100 bg-white p-4">
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+                    <Clock3 size={18} />
+                  </span>
+                  <div>
+                    <h3 className="text-lg font-black text-[#3b1208]">Mas carga</h3>
+                    <p className="text-xs font-semibold text-[#ff5a1f]">Mayor volumen semanal.</p>
+                  </div>
+                </div>
+
+                {weeklySummary.busiest ? (
+                  <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 p-4">
+                    <span
+                      className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-black text-white shadow-sm"
+                      style={{ backgroundColor: weeklySummary.busiest.color }}
+                    >
+                      {weeklySummary.busiest.initials}
+                    </span>
+                    <p className="mt-3 font-black text-[#3b1208]">{weeklySummary.busiest.label}</p>
+                    <p className="mt-1 text-sm font-semibold text-[#ff5a1f]">
+                      {weeklySummary.busiest.totalCount} actividades esta semana.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-orange-200 p-4 text-sm font-bold text-[#ff5a1f]">
+                    Sin carga registrada esta semana.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-orange-100 bg-white p-4">
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+                    <Umbrella size={18} />
+                  </span>
+                  <div>
+                    <h3 className="text-lg font-black text-[#3b1208]">Vacaciones</h3>
+                    <p className="text-xs font-semibold text-[#ff5a1f]">Ausencias de esta semana.</p>
+                  </div>
+                </div>
+
+                {weeklySummary.vacationPeople.length ? (
+                  <div className="space-y-3">
+                    {weeklySummary.vacationPeople.slice(0, 4).map((person) => (
+                      <motion.div
+                        key={person.id}
+                        initial={{ opacity: 0, x: 8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.22, ease: 'easeOut' }}
+                        className="rounded-2xl border border-orange-100 bg-[#fffaf5] p-3"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: person.color }} />
+                          <p className="font-black text-[#3b1208]">{person.label}</p>
+                        </div>
+                        <p className="mt-1 text-xs font-bold text-[#ff5a1f]">
+                          {person.vacations
+                            .map(
+                              (vacation) =>
+                                `${formatShortDate(vacation.startDate)} - ${formatShortDate(vacation.endDate)}`
+                            )
+                            .join(', ')}
+                        </p>
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-orange-200 p-4 text-sm font-bold text-[#ff5a1f]">
+                    Nadie esta de vacaciones esta semana.
+                  </p>
+                )}
               </div>
             </div>
           </motion.section>
@@ -1369,8 +1616,7 @@ const PortalTeamPage = () => {
                           {dayVacations.slice(0, 2).map((vacation) => {
                             const vacationKey = vacation.id || vacation._id;
                             const vacationUserLabel = getUserLabel(vacation.user);
-                            const vacationColor =
-                              vacation.color || getUserColor(getUserId(vacation.user) || vacationUserLabel);
+                            const vacationColor = getPersonColorForUser(vacation.user);
                             const starts = startsVacationSegment(value, vacation, date);
                             const ends = endsVacationSegment(value, vacation, date);
 
@@ -1392,8 +1638,9 @@ const PortalTeamPage = () => {
                       <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">
                         {dayActivities.slice(0, 4).map((activity) => {
                           const personLabel = getUserLabel(activity.assignedTo || activity.createdBy || currentUser);
-                          const markerColor =
-                            activity.color || getUserColor(getUserId(activity.assignedTo) || personLabel);
+                          const markerColor = getPersonColorForUser(
+                            activity.assignedTo || activity.createdBy || currentUser
+                          );
 
                           return (
                             <motion.span
@@ -1502,7 +1749,9 @@ const PortalTeamPage = () => {
                                 <span
                                   className="h-3 w-3 rounded-full shadow-sm"
                                   style={{
-                                    backgroundColor: activity.color || DEFAULT_ACTIVITY_COLOR,
+                                    backgroundColor: getPersonColorForUser(
+                                      activity.assignedTo || activity.createdBy || currentUser
+                                    ),
                                   }}
                                 />
                                 <p className="text-sm font-bold text-[#ff5a1f]">
