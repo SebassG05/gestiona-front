@@ -19,6 +19,7 @@ import {
   Wallet,
   X,
   CalendarDays,
+  ClipboardCheck,
 } from 'lucide-react';
 
 const SIDEBAR_OPEN_WIDTH = 312;
@@ -36,6 +37,7 @@ const navigationItems = [
   { label: 'Inicio', icon: Home, path: '' },
   { label: 'Proyectos', icon: FolderKanban, path: 'projects' },
   { label: 'Propuestas', icon: FilePenLine, path: 'proposals' },
+  { label: 'Gestion propuestas', icon: ClipboardCheck, path: 'proposal-management' },
   { label: 'Oportunidades', icon: BriefcaseBusiness, path: 'opportunities' },
   { label: 'Contactos', icon: ContactRound, path: 'contacts' },
   { label: 'Equipo', icon: Users, path: 'team' },

@@ -12,6 +12,7 @@ import PortalTeamPage from '../features/dashboard/components/PortalTeamPage.jsx'
 import PortalBusinessTripsPage from '../features/dashboard/components/PortalBusinessTripsPage.jsx';
 import ProposalContactsPage from '../features/dashboard/components/ProposalContactsPage.jsx';
 import PortalProposalsPage from '../features/dashboard/components/PortalProposalsPage.jsx';
+import ProposalManagementPage from '../features/dashboard/components/ProposalManagementPage.jsx';
 import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspacePage.jsx';
 import CookieBanner from '../features/legal/components/CookieBanner.jsx';
 import LegalPage from '../features/legal/components/LegalPage.jsx';
@@ -110,6 +111,14 @@ const AppRouter = () => {
           element={
             <ProtectedRoute>
               <PortalProposalsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/proposal-management"
+          element={
+            <ProtectedRoute>
+              <ProposalManagementPage />
             </ProtectedRoute>
           }
         />
