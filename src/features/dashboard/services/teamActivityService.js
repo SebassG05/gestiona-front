@@ -29,3 +29,18 @@ export const deleteTeamActivity = async ({ portalId, activityId }) => {
   );
   return response.data;
 };
+
+export const addTeamActivityComment = async ({ portalId, activityId, message }) => {
+  const response = await api.post(
+    `/portals/${encodeURIComponent(portalId)}/team-activities/${encodeURIComponent(activityId)}/comments`,
+    { message }
+  );
+  return response.data;
+};
+
+export const deleteTeamActivityComment = async ({ portalId, activityId, commentId }) => {
+  const response = await api.delete(
+    `/portals/${encodeURIComponent(portalId)}/team-activities/${encodeURIComponent(activityId)}/comments/${encodeURIComponent(commentId)}`
+  );
+  return response.data;
+};

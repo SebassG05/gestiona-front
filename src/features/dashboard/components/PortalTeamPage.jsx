@@ -9,8 +9,10 @@ import {
   Clock3,
   Loader2,
   Landmark,
+  MessageSquare,
   Pencil,
   Plus,
+  SendHorizontal,
   Trash2,
   Umbrella,
   UserRound,
@@ -21,7 +23,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getPortalMembers } from '../services/portalService.js';
 import {
+  addTeamActivityComment,
   createTeamActivity,
+  deleteTeamActivityComment,
   deleteTeamActivity,
   getTeamActivities,
   updateTeamActivity,
@@ -252,6 +256,19 @@ const formatShortDate = (value) => {
   }).format(parseActivityDate(value));
 };
 
+const formatCommentDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
+
 const getWeekRange = (date = new Date()) => {
   const target = parseActivityDate(toDateInputValue(date));
   const mondayOffset = (target.getDay() + 6) % 7;
@@ -307,6 +324,10 @@ const PortalTeamPage = () => {
   const [error, setError] = useState('');
   const [vacationError, setVacationError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [commentDrafts, setCommentDrafts] = useState({});
+  const [commentSavingId, setCommentSavingId] = useState(null);
+  const [commentDeleteTarget, setCommentDeleteTarget] = useState(null);
+  const [commentError, setCommentError] = useState('');
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
   const [personFilter, setPersonFilter] = useState('all');
   const personScrollerRef = useRef(null);
@@ -648,6 +669,77 @@ const PortalTeamPage = () => {
     }
   };
 
+  const syncActivity = (nextActivity) => {
+    if (!nextActivity?.id) return;
+
+    setActivities((current) =>
+      current.map((activity) => (activity.id === nextActivity.id ? nextActivity : activity))
+    );
+  };
+
+  const handleCommentDraftChange = (activityId, value) => {
+    setCommentDrafts((current) => ({ ...current, [activityId]: value }));
+    if (commentError === activityId) setCommentError('');
+  };
+
+  const handleAddComment = async (activity) => {
+    const message = (commentDrafts[activity.id] || '').trim();
+
+    if (!message) {
+      setCommentError(activity.id);
+      return;
+    }
+
+    setCommentSavingId(activity.id);
+    setCommentError('');
+
+    try {
+      const response = await addTeamActivityComment({
+        portalId,
+        activityId: activity.id,
+        message,
+      });
+      syncActivity(response.data || response.activity || response);
+      setCommentDrafts((current) => {
+        const next = { ...current };
+        delete next[activity.id];
+        return next;
+      });
+    } catch (requestError) {
+      setCommentError(activity.id);
+      setError(requestError.response?.data?.message || 'No se pudo anadir el comentario');
+    } finally {
+      setCommentSavingId(null);
+    }
+  };
+
+  const handleCommentKeyDown = (event, activity) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      handleAddComment(activity);
+    }
+  };
+
+  const handleConfirmDeleteComment = async () => {
+    if (!commentDeleteTarget) return;
+
+    setCommentSavingId(commentDeleteTarget.activityId);
+
+    try {
+      const response = await deleteTeamActivityComment({
+        portalId,
+        activityId: commentDeleteTarget.activityId,
+        commentId: commentDeleteTarget.commentId,
+      });
+      syncActivity(response.data || response.activity || response);
+      setCommentDeleteTarget(null);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'No se pudo eliminar el comentario');
+    } finally {
+      setCommentSavingId(null);
+    }
+  };
+
   const handleVacationChange = (event) => {
     const { name, value } = event.target;
     setVacationForm((current) => {
@@ -720,6 +812,136 @@ const PortalTeamPage = () => {
     const value = toDateInputValue(date);
     setSelectedDate(value);
     setForm((current) => ({ ...current, workDate: value }));
+  };
+
+  const renderActivityComments = (activity) => {
+    const comments = activity.comments || [];
+    const draft = commentDrafts[activity.id] || '';
+    const isSavingComment = commentSavingId === activity.id;
+
+    return (
+      <div className="mt-5 rounded-[24px] border border-[#ffd9b8] bg-white/75 p-4 shadow-[0_12px_30px_rgba(80,20,0,0.06)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff4ea] text-[#ff5a1f]">
+              <MessageSquare className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-sm font-black text-[#3d1208]">Comentarios</p>
+              <p className="text-xs font-semibold text-[#ff5a1f]">
+                Actualizaciones rapidas de esta tarea.
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full border border-[#ffd9b8] bg-[#fffaf5] px-3 py-1 text-xs font-black text-[#ff5a1f]">
+            {comments.length} {comments.length === 1 ? 'nota' : 'notas'}
+          </span>
+        </div>
+
+        <AnimatePresence initial={false}>
+          {comments.length > 0 ? (
+            <motion.div
+              key="comments"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="mt-4 space-y-3"
+            >
+              {comments.map((comment) => {
+                const commentId = comment.id || comment._id;
+                const authorId = getUserId(comment.author);
+                const canDeleteComment =
+                  currentUserId &&
+                  [authorId, getUserId(activity.author), getUserId(activity.createdBy), getUserId(activity.assignedTo)]
+                    .filter(Boolean)
+                    .includes(currentUserId);
+
+                return (
+                  <div
+                    key={commentId}
+                    className="group rounded-2xl border border-[#ffe4cc] bg-[#fffaf5] p-3 transition hover:border-[#ffb170] hover:bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black text-[#3d1208]">
+                          {getUserLabel(comment.author)}
+                        </p>
+                        <p className="text-[11px] font-semibold text-[#ff7a2f]">
+                          {formatCommentDate(comment.createdAt)}
+                        </p>
+                      </div>
+                      {canDeleteComment && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCommentDeleteTarget({
+                              activityId: activity.id,
+                              commentId,
+                              message: comment.message,
+                            })
+                          }
+                          className="cursor-pointer rounded-xl border border-rose-100 bg-white p-2 text-rose-500 opacity-100 transition hover:bg-rose-50 sm:opacity-0 sm:group-hover:opacity-100"
+                          aria-label="Eliminar comentario"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#5a2014]">
+                      {comment.message}
+                    </p>
+                  </div>
+                );
+              })}
+            </motion.div>
+          ) : (
+            <motion.p
+              key="empty-comments"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2 }}
+              className="mt-4 rounded-2xl border border-dashed border-[#ffd9b8] bg-[#fffaf5] px-4 py-3 text-sm font-semibold text-[#a34a21]"
+            >
+              Todavia no hay comentarios en esta tarea.
+            </motion.p>
+          )}
+        </AnimatePresence>
+
+        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#ffd9b8] bg-white p-3 sm:flex-row sm:items-end">
+          <label className="flex-1 text-xs font-black text-[#3d1208]">
+            Nueva actualizacion
+            <textarea
+              value={draft}
+              onChange={(event) => handleCommentDraftChange(activity.id, event.target.value)}
+              onKeyDown={(event) => handleCommentKeyDown(event, activity)}
+              placeholder="Escribe un avance, bloqueo o siguiente paso..."
+              rows={2}
+              className="mt-2 min-h-[76px] w-full resize-none rounded-2xl border border-[#ffd4ad] bg-[#fffaf5] px-4 py-3 text-sm font-semibold text-[#3d1208] outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-[#ff5a1f]/10"
+            />
+            {commentError === activity.id && (
+              <span className="mt-2 block text-xs font-black text-[#ff2d55]">
+                Escribe algo antes de enviarlo.
+              </span>
+            )}
+          </label>
+          <button
+            type="button"
+            onClick={() => handleAddComment(activity)}
+            disabled={isSavingComment}
+            className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5a1f] to-[#ff2d55] px-5 py-3 text-sm font-black text-white shadow-lg shadow-orange-200 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSavingComment ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <SendHorizontal className="h-4 w-4" />
+            )}
+            Anadir nota
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1796,6 +2018,8 @@ const PortalTeamPage = () => {
                               Prioridad {priority.label}
                             </span>
                           </div>
+
+                          {renderActivityComments(activity)}
                         </motion.article>
                       );
                     })}
@@ -1853,6 +2077,67 @@ const PortalTeamPage = () => {
                     className="cursor-pointer rounded-2xl bg-gradient-to-r from-[#ff5a00] to-[#ff3048] px-5 py-3 text-sm font-black text-white shadow-lg shadow-rose-100 transition hover:-translate-y-0.5"
                   >
                     Si, eliminar tarea
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {commentDeleteTarget && (
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-[#3b1208]/35 px-4 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.94, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="w-full max-w-lg rounded-[24px] border border-rose-100 bg-white p-7 shadow-2xl shadow-rose-100"
+              >
+                <div className="flex items-start gap-4">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
+                    <AlertTriangle size={22} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-wide text-[#ff3f6c]">
+                      Eliminar comentario
+                    </p>
+                    <h3 className="mt-2 text-2xl font-black text-[#3b1208]">
+                      Quitar actualizacion
+                    </h3>
+                    <p className="mt-3 text-sm leading-6 text-[#ff5a1f]">
+                      Esta nota dejara de aparecer en la tarea. La accion no se puede deshacer.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-[#ffd9b8] bg-[#fffaf5] p-4 text-sm leading-6 text-[#5a2014]">
+                  {commentDeleteTarget.message}
+                </div>
+
+                <div className="mt-7 flex justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCommentDeleteTarget(null)}
+                    className="cursor-pointer rounded-2xl border border-orange-200 bg-white px-5 py-3 text-sm font-black text-[#8b2f12] transition hover:bg-orange-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDeleteComment}
+                    disabled={commentSavingId === commentDeleteTarget.activityId}
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5a00] to-[#ff3048] px-5 py-3 text-sm font-black text-white shadow-lg shadow-rose-100 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {commentSavingId === commentDeleteTarget.activityId && (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    )}
+                    Eliminar comentario
                   </button>
                 </div>
               </motion.div>
