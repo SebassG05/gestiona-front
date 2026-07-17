@@ -13,7 +13,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import PortalSidebar from './PortalSidebar.jsx';
 import { getPortalMembers } from '../services/portalService.js';
 import {
@@ -90,6 +90,8 @@ const getTripDateValue = (trip, field) => (trip?.[field] ? trip[field].slice(0, 
 
 const PortalBusinessTripsPage = () => {
   const { portalId } = useParams();
+  const navigate = useNavigate();
+  const [isReturningToTeam, setIsReturningToTeam] = useState(false);
   const [members, setMembers] = useState([]);
   const [trips, setTrips] = useState([]);
   const [form, setForm] = useState(initialTripForm);
@@ -260,7 +262,15 @@ const PortalBusinessTripsPage = () => {
 
   return (
     <PortalSidebar>
-      <main className="relative min-h-screen overflow-hidden px-6 py-8 text-[#3d1006]">
+      <motion.main
+        initial={{ opacity: 0, x: 18 }}
+        animate={isReturningToTeam ? { opacity: 0, x: -22 } : { opacity: 1, x: 0 }}
+        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+        onAnimationComplete={() => {
+          if (isReturningToTeam) navigate(`/dashboard/portal/${portalId}/team`);
+        }}
+        className="relative min-h-screen overflow-hidden px-6 py-8 text-[#3d1006]"
+      >
         <motion.div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 -z-10 opacity-80"
@@ -317,13 +327,17 @@ const PortalBusinessTripsPage = () => {
                       </p>
                     </div>
                   </div>
-                  <Link
-                    to={`/dashboard/portal/${portalId}/team`}
-                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-white px-4 text-sm font-black text-[#8b2f12] transition hover:-translate-y-0.5 hover:bg-orange-50 hover:shadow-sm focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  <motion.button
+                    type="button"
+                    onClick={() => setIsReturningToTeam(true)}
+                    disabled={isReturningToTeam}
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.96, y: 1 }}
+                    className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-200 bg-white px-4 text-sm font-black text-[#8b2f12] transition hover:bg-orange-50 hover:shadow-sm focus:outline-none focus:ring-4 focus:ring-orange-100 disabled:cursor-wait"
                   >
                     <ArrowLeft size={17} />
                     Volver a Equipo
-                  </Link>
+                  </motion.button>
                 </div>
               </div>
 
@@ -593,7 +607,7 @@ const PortalBusinessTripsPage = () => {
             </motion.div>
           )}
         </AnimatePresence>
-      </main>
+      </motion.main>
     </PortalSidebar>
   );
 };

@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getBusinessTrips } from '../services/businessTripService.js';
 import { getPortalMembers } from '../services/portalService.js';
 import {
@@ -39,8 +39,6 @@ import {
   getTeamVacations,
 } from '../services/teamVacationService.js';
 import PortalSidebar from './PortalSidebar.jsx';
-
-const MotionLink = motion.create(Link);
 
 const STATUS_OPTIONS = [
   { value: 'planned', label: 'Planificado', className: 'bg-sky-50 text-sky-700 border-sky-200' },
@@ -316,6 +314,8 @@ const endsVacationSegment = (value, vacation, date) =>
 
 const PortalTeamPage = () => {
   const { portalId } = useParams();
+  const navigate = useNavigate();
+  const [isLeavingForTrips, setIsLeavingForTrips] = useState(false);
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [vacations, setVacations] = useState([]);
@@ -1019,7 +1019,15 @@ const PortalTeamPage = () => {
           />
         </motion.svg>
 
-        <main className="relative z-10 mx-auto max-w-7xl space-y-6">
+        <motion.main
+          initial={{ opacity: 0, x: -14 }}
+          animate={isLeavingForTrips ? { opacity: 0, x: 22 } : { opacity: 1, x: 0 }}
+          transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+          onAnimationComplete={() => {
+            if (isLeavingForTrips) navigate(`/dashboard/portal/${portalId}/team/trips`);
+          }}
+          className="relative z-10 mx-auto max-w-7xl space-y-6"
+        >
           <section className="rounded-[24px] border border-orange-100 bg-white/90 p-7 shadow-sm">
             <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">Equipo</p>
             <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -1031,16 +1039,18 @@ const PortalTeamPage = () => {
                   Anota en que estas trabajando, consulta el foco de cada persona y revisa el
                   calendario diario del portal.
                 </p>
-                <MotionLink
-                  to={`/dashboard/portal/${portalId}/team/trips`}
+                <motion.button
+                  type="button"
+                  onClick={() => setIsLeavingForTrips(true)}
+                  disabled={isLeavingForTrips}
                   whileHover={{ y: -2 }}
                   whileTap={{ scale: 0.96, y: 1 }}
                   transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a00] to-[#ff3048] px-4 py-2.5 text-sm font-black text-white shadow-md shadow-orange-100 transition hover:-translate-y-0.5 hover:shadow-lg"
+                  className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a00] to-[#ff3048] px-4 py-2.5 text-sm font-black text-white shadow-md shadow-orange-100 hover:shadow-lg disabled:cursor-wait"
                 >
                   <PlaneTakeoff size={18} />
                   Agregar viaje de empresa
-                </MotionLink>
+                </motion.button>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="flex h-28 w-28 shrink-0 flex-col items-center justify-center rounded-2xl border border-orange-100 bg-[#fff8f1] p-4 text-center shadow-sm">
@@ -2171,7 +2181,7 @@ const PortalTeamPage = () => {
               )}
             </div>
           </section>
-        </main>
+        </motion.main>
 
         <AnimatePresence>
           {deleteTarget && (
