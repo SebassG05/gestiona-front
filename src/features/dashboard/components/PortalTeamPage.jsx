@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Clock3,
   Loader2,
+  Landmark,
   Pencil,
   Plus,
   Trash2,
@@ -63,6 +64,28 @@ const USER_ACTIVITY_COLORS = [
   '#3b1208',
 ];
 
+const HOLIDAY_COLOR = '#7c3aed';
+
+const FIXED_SEVILLE_HOLIDAYS = [
+  { month: 0, day: 1, name: 'Ano Nuevo', scope: 'Nacional' },
+  { month: 0, day: 6, name: 'Reyes', scope: 'Nacional' },
+  { month: 1, day: 28, name: 'Dia de Andalucia', scope: 'Andalucia', moveIfSunday: true },
+  { month: 4, day: 1, name: 'Dia del Trabajo', scope: 'Nacional' },
+  { month: 7, day: 15, name: 'Asuncion', scope: 'Nacional' },
+  { month: 9, day: 12, name: 'Fiesta Nacional', scope: 'Nacional' },
+  { month: 10, day: 1, name: 'Todos los Santos', scope: 'Nacional', moveIfSunday: true },
+  { month: 11, day: 6, name: 'Constitucion', scope: 'Nacional', moveIfSunday: true },
+  { month: 11, day: 8, name: 'Inmaculada', scope: 'Nacional' },
+  { month: 11, day: 25, name: 'Navidad', scope: 'Nacional' },
+];
+
+const SEVILLE_LOCAL_HOLIDAYS_BY_YEAR = {
+  2026: [
+    { date: '2026-04-22', name: 'Feria de Sevilla', scope: 'Sevilla' },
+    { date: '2026-06-04', name: 'Corpus Christi', scope: 'Sevilla' },
+  ],
+};
+
 const emptyForm = {
   title: '',
   description: '',
@@ -79,6 +102,64 @@ const toDateInputValue = (date) => {
 const parseActivityDate = (value) => new Date(`${String(value).slice(0, 10)}T12:00:00`);
 
 const todayValue = () => toDateInputValue(new Date());
+
+const addDays = (date, amount) => {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + amount);
+  return nextDate;
+};
+
+const getFixedHolidayDate = (year, holiday) => {
+  const holidayDate = new Date(year, holiday.month, holiday.day);
+  return holiday.moveIfSunday && holidayDate.getDay() === 0 ? addDays(holidayDate, 1) : holidayDate;
+};
+
+const getEasterSunday = (year) => {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month, day);
+};
+
+const getSevilleHolidays = (year) => {
+  const easterSunday = getEasterSunday(year);
+  const fixedHolidays = FIXED_SEVILLE_HOLIDAYS.map((holiday) => ({
+    ...holiday,
+    date: toDateInputValue(getFixedHolidayDate(year, holiday)),
+  }));
+  const localHolidays =
+    SEVILLE_LOCAL_HOLIDAYS_BY_YEAR[year] ||
+    [
+      { date: toDateInputValue(addDays(easterSunday, 17)), name: 'Feria de Sevilla', scope: 'Sevilla' },
+      { date: toDateInputValue(addDays(easterSunday, 60)), name: 'Corpus Christi', scope: 'Sevilla' },
+    ];
+
+  return [
+    ...fixedHolidays,
+    {
+      date: toDateInputValue(addDays(easterSunday, -3)),
+      name: 'Jueves Santo',
+      scope: 'Andalucia',
+    },
+    {
+      date: toDateInputValue(addDays(easterSunday, -2)),
+      name: 'Viernes Santo',
+      scope: 'Andalucia',
+    },
+    ...localHolidays,
+  ];
+};
 
 const getMonthRange = (date) => {
   const first = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -235,6 +316,16 @@ const PortalTeamPage = () => {
 
   const calendarDays = useMemo(() => buildCalendarDays(monthCursor), [monthCursor]);
 
+  const holidaysByDate = useMemo(() => {
+    const years = new Set(calendarDays.map(({ date }) => date.getFullYear()));
+    return Array.from(years).reduce((acc, year) => {
+      getSevilleHolidays(year).forEach((holiday) => {
+        acc[holiday.date] = holiday;
+      });
+      return acc;
+    }, {});
+  }, [calendarDays]);
+
   const activitiesByDate = useMemo(
     () =>
       activities.reduce((acc, activity) => {
@@ -255,6 +346,7 @@ const PortalTeamPage = () => {
   }, [calendarDays, vacations]);
 
   const selectedActivities = activitiesByDate[selectedDate] || [];
+  const selectedHoliday = holidaysByDate[selectedDate];
   const minWorkDate = todayValue();
   const isSelectedPastDate = selectedDate < minWorkDate;
   const todayActivities = activitiesByDate[minWorkDate] || [];
@@ -982,7 +1074,16 @@ const PortalTeamPage = () => {
                   </span>
                   <div>
                     <h2 className="text-2xl font-black">Calendario</h2>
-                    <p className="text-sm text-[#ff5a1f]">Pulsa un dia para ver su actividad.</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-sm text-[#ff5a1f]">Pulsa un dia para ver su actividad.</p>
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[11px] font-black text-violet-700"
+                        style={{ color: HOLIDAY_COLOR }}
+                      >
+                        <Landmark size={13} />
+                        Festivo Sevilla
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1028,6 +1129,7 @@ const PortalTeamPage = () => {
                   const value = toDateInputValue(date);
                   const dayActivities = activitiesByDate[value] || [];
                   const dayVacations = vacationsByDate[value] || [];
+                  const holiday = holidaysByDate[value];
                   const isSelected = value === selectedDate;
 
                   return (
@@ -1038,20 +1140,40 @@ const PortalTeamPage = () => {
                       whileTap={{ scale: 0.97 }}
                       animate={isSelected ? { scale: 1.02 } : { scale: 1 }}
                       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                      title={
+                        holiday ? `${holiday.name} - Festivo ${holiday.scope || 'Sevilla'}` : undefined
+                      }
                       className={`relative cursor-pointer overflow-hidden rounded-2xl border p-3 text-left transition ${
                         isSelected
                           ? 'border-[#ff5a1f] bg-[#fff3e7] shadow-sm'
-                          : 'border-orange-100 bg-white hover:border-orange-300 hover:bg-orange-50/60'
+                          : holiday && isCurrentMonth
+                            ? 'border-violet-200 bg-violet-50/70 hover:border-violet-300 hover:bg-violet-50'
+                            : 'border-orange-100 bg-white hover:border-orange-300 hover:bg-orange-50/60'
                       } ${isTaskFormOpen ? 'min-h-24' : 'min-h-28'} ${!isCurrentMonth ? 'opacity-45' : ''}`}
                     >
                       <span className="absolute left-3 top-3 text-sm font-black">{date.getDate()}</span>
+                      {holiday && isCurrentMonth && (
+                        <motion.span
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="absolute left-3 top-9 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black text-white shadow-sm"
+                          style={{ backgroundColor: HOLIDAY_COLOR }}
+                        >
+                          <Landmark size={10} />
+                          <span className="truncate">{holiday.name}</span>
+                        </motion.span>
+                      )}
                       {dayActivities.length > 0 && (
                         <span className="absolute right-2 top-2 rounded-full border border-orange-100 bg-white px-2 py-0.5 text-[10px] font-black text-[#ff5a1f] shadow-sm">
                           {dayActivities.length}
                         </span>
                       )}
                       {dayVacations.length > 0 && (
-                        <div className="pointer-events-none absolute left-0 right-0 top-10 space-y-1">
+                        <div
+                          className={`pointer-events-none absolute left-0 right-0 space-y-1 ${
+                            holiday && isCurrentMonth ? 'top-16' : 'top-10'
+                          }`}
+                        >
                           {dayVacations.slice(0, 2).map((vacation) => {
                             const vacationKey = vacation.id || vacation._id;
                             const vacationUserLabel = getUserLabel(vacation.user);
@@ -1138,6 +1260,15 @@ const PortalTeamPage = () => {
                     month: 'long',
                   }).format(parseActivityDate(selectedDate))}
                 </h2>
+                {selectedHoliday && (
+                  <span
+                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black text-violet-700"
+                    style={{ color: HOLIDAY_COLOR }}
+                  >
+                    <Landmark size={14} />
+                    {selectedHoliday.name}
+                  </span>
+                )}
               </div>
               <span className="rounded-full border border-orange-200 bg-[#fff8f1] px-4 py-2 text-sm font-black text-[#ff5a1f]">
                 {selectedActivities.length} actividades
