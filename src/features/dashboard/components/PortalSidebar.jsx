@@ -19,6 +19,7 @@ import {
   X,
   ClipboardCheck,
 } from 'lucide-react';
+import { clearAuthSession } from '../../../utils/session.js';
 
 const SIDEBAR_OPEN_WIDTH = 312;
 const SIDEBAR_CLOSED_WIDTH = 92;
@@ -54,9 +55,8 @@ const PortalSidebar = ({ children }) => {
   const basePath = `/dashboard/portal/${portalId}`;
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
+    clearAuthSession();
+    navigate('/', { replace: true, state: { logoutSuccess: true } });
   };
 
   return (

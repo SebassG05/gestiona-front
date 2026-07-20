@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowRight,
   CalendarCheck2,
@@ -6,8 +6,10 @@ import {
   ClipboardCheck,
   FolderKanban,
   Users,
+  X,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { hasValidSession } from '../../../utils/session.js';
 
 const LOGO_URL =
@@ -34,11 +36,57 @@ const capabilities = [
 ];
 
 const PublicHomePage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [showLogoutNotice, setShowLogoutNotice] = useState(
+    () => location.state?.logoutSuccess === true
+  );
   const accessPath = hasValidSession() ? '/dashboard' : '/login';
+
+  useEffect(() => {
+    if (!location.state?.logoutSuccess) return undefined;
+    navigate(location.pathname, { replace: true, state: null });
+    return undefined;
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    if (!showLogoutNotice) return undefined;
+    const timeout = window.setTimeout(() => setShowLogoutNotice(false), 4200);
+    return () => window.clearTimeout(timeout);
+  }, [showLogoutNotice]);
 
   return (
     <main className="min-h-screen bg-white text-[#3b1208]">
-      <section className="relative flex min-h-[92vh] flex-col overflow-hidden bg-[#3b1208] text-white">
+      <AnimatePresence>
+        {showLogoutNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-4 right-4 z-50 flex w-[calc(100%-2rem)] max-w-sm items-center gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3.5 text-[#3b1208] shadow-[0_18px_55px_rgba(59,18,8,0.18)] sm:bottom-6 sm:right-6"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-600">
+              <CheckCircle2 size={21} strokeWidth={2.4} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-black">Sesion cerrada</p>
+              <p className="mt-0.5 text-sm text-[#8b3a20]">Has cerrado sesion correctamente.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowLogoutNotice(false)}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#a64729] transition hover:bg-orange-50 hover:text-orange-600"
+              aria-label="Cerrar notificacion"
+            >
+              <X size={17} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <section className="relative flex min-h-[100svh] flex-col overflow-hidden bg-[#3b1208] text-white">
         <img
           src={HERO_IMAGE_URL}
           alt="Espacio de trabajo de Gestiona-2 para la gestion de proyectos y propuestas"

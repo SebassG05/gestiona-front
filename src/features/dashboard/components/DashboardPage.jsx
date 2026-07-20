@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { clearAuthSession } from '../../../utils/session.js';
 
 const cards = [
   {
@@ -50,9 +51,8 @@ const DashboardPage = () => {
   const username = user?.username || 'Usuario';
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
+    clearAuthSession();
+    navigate('/', { replace: true, state: { logoutSuccess: true } });
   };
 
   return (
