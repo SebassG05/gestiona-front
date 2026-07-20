@@ -23,6 +23,7 @@ import {
   Trash2,
   Plus,
   Search,
+  Star,
   SquarePen,
   Table2,
   RefreshCw,
@@ -49,6 +50,7 @@ import {
   getPortalProposals,
   importProposals,
 } from '../services/proposalService.js';
+import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
 
 const baseSheets = ['Propuestas activas', 'Borradores'];
 const statusSheetOptions = ['En preparacion', 'Enviada', 'En revision', 'Ganada', 'Archivada'];
@@ -334,6 +336,15 @@ const PortalProposalsPage = () => {
   const [isImportingExcel, setIsImportingExcel] = useState(false);
   const [proposalPage, setProposalPage] = useState(1);
   const [proposalPagination, setProposalPagination] = useState(emptyPagination);
+  const [favoriteProposalIds, setFavoriteProposalIds] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    getPortalFavorites(portalId)
+      .then((response) => { if (active) setFavoriteProposalIds(response.data?.proposals || []); })
+      .catch(() => { if (active) setFavoriteProposalIds([]); });
+    return () => { active = false; };
+  }, [portalId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -550,6 +561,10 @@ const PortalProposalsPage = () => {
     };
 
     return [...filteredProposals].sort((firstProposal, secondProposal) => {
+      const favoriteOrder = Number(favoriteProposalIds.includes(secondProposal._id)) -
+        Number(favoriteProposalIds.includes(firstProposal._id));
+      if (favoriteOrder) return favoriteOrder;
+
       const firstValue = getSortValue(firstProposal);
       const secondValue = getSortValue(secondProposal);
 
@@ -566,7 +581,22 @@ const PortalProposalsPage = () => {
 
       return tablePreferences.sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [filteredProposals, tablePreferences.sortDirection, tablePreferences.sortKey]);
+  }, [favoriteProposalIds, filteredProposals, tablePreferences.sortDirection, tablePreferences.sortKey]);
+
+  const toggleProposalFavorite = async (proposalId) => {
+    const wasFavorite = favoriteProposalIds.includes(proposalId);
+    setFavoriteProposalIds((current) =>
+      wasFavorite ? current.filter((id) => id !== proposalId) : [proposalId, ...current]
+    );
+    try {
+      await setPortalFavorite({ portalId, entityType: 'proposal', entityId: proposalId, favorite: !wasFavorite });
+    } catch (error) {
+      setFavoriteProposalIds((current) =>
+        wasFavorite ? [proposalId, ...current.filter((id) => id !== proposalId)] : current.filter((id) => id !== proposalId)
+      );
+      setNotice(error.response?.data?.message || 'No se pudo actualizar el favorito.');
+    }
+  };
 
   const tableGridColumns = [
     '56px',
@@ -1605,7 +1635,9 @@ const PortalProposalsPage = () => {
                         areAllProposalsSelected || proposal._id === selectedProposalId;
 
                       return (
-                        <div
+                        <motion.div
+                          layout="position"
+                          transition={{ layout: { duration: 0.58, ease: [0.22, 1, 0.36, 1] } }}
                           key={proposal._id}
                           style={{ gridTemplateColumns: tableGridColumns }}
                           onClick={() =>
@@ -1646,8 +1678,19 @@ const PortalProposalsPage = () => {
                               {proposal.acronimo || '-'}
                             </div>
                           )}
-                          <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
-                            {proposal.nombre}
+                          <div className={`flex items-center justify-center gap-2 px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
+                            <motion.button
+                              type="button"
+                              onClick={(event) => { event.stopPropagation(); toggleProposalFavorite(proposal._id); }}
+                              whileTap={{ scale: 0.88 }}
+                              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition hover:bg-amber-50 ${favoriteProposalIds.includes(proposal._id) ? 'text-amber-500' : 'text-orange-200 hover:text-amber-500'}`}
+                              title={favoriteProposalIds.includes(proposal._id) ? 'Quitar de favoritos' : 'Fijar arriba'}
+                              aria-label={favoriteProposalIds.includes(proposal._id) ? 'Quitar propuesta de favoritos' : 'Marcar propuesta como favorita'}
+                            >
+                              <Star size={18} fill={favoriteProposalIds.includes(proposal._id) ? 'currentColor' : 'none'} />
+                            </motion.button>
+                            <span>{proposal.nombre}</span>
                           </div>
                           <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>{proposal.programa || '-'}</div>
                           <div className={`flex items-center justify-center px-2 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
@@ -1690,7 +1733,7 @@ const PortalProposalsPage = () => {
                               </button>
                             </div>
                           )}
-                        </div>
+                        </motion.div>
                       );
                     })
                   ) : (

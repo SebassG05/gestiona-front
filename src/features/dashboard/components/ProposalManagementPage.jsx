@@ -10,12 +10,14 @@ import {
   Search,
   Sparkles,
   SquarePen,
+  Star,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import PortalSidebar from './PortalSidebar.jsx';
 import { getPortalMembers } from '../services/portalService.js';
 import { getPortalProposals } from '../services/proposalService.js';
+import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
 import { getProposalControl, saveProposalControl } from '../services/proposalControlService.js';
 
 const STATUSES = ['No iniciado', 'En progreso', 'En revision', 'Listo', 'No aplica'];
@@ -62,18 +64,24 @@ const ProposalManagementPage = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isTableDragging, setIsTableDragging] = useState(false);
+  const [favoriteProposalIds, setFavoriteProposalIds] = useState([]);
+  const [isProposalMenuOpen, setIsProposalMenuOpen] = useState(false);
   const tableScrollerRef = useRef(null);
+  const proposalMenuRef = useRef(null);
   const tableDragRef = useRef({ startX: 0, scrollLeft: 0 });
 
   useEffect(() => {
     let active = true;
-    Promise.all([getPortalProposals(portalId, { page: 1, limit: 100 }), getPortalMembers(portalId)])
-      .then(([proposalResponse, memberResponse]) => {
+    Promise.all([getPortalProposals(portalId, { page: 1, limit: 100 }), getPortalMembers(portalId), getPortalFavorites(portalId)])
+      .then(([proposalResponse, memberResponse, favoriteResponse]) => {
         if (!active) return;
         const nextProposals = unwrapProposals(proposalResponse);
         setProposals(nextProposals);
         setMembers(unwrapMembers(memberResponse));
-        setProposalId((current) => current || nextProposals[0]?._id || nextProposals[0]?.id || '');
+        const favoriteIds = favoriteResponse.data?.proposals || [];
+        setFavoriteProposalIds(favoriteIds);
+        const ordered = [...nextProposals].sort((a, b) => Number(favoriteIds.includes(b._id || b.id)) - Number(favoriteIds.includes(a._id || a.id)));
+        setProposalId((current) => current || ordered[0]?._id || ordered[0]?.id || '');
         if (!nextProposals.length) setIsLoading(false);
       })
       .catch((requestError) => {
@@ -83,6 +91,14 @@ const ProposalManagementPage = () => {
       });
     return () => { active = false; };
   }, [portalId]);
+
+  useEffect(() => {
+    const closeMenu = (event) => {
+      if (!proposalMenuRef.current?.contains(event.target)) setIsProposalMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeMenu);
+    return () => document.removeEventListener('pointerdown', closeMenu);
+  }, []);
 
   useEffect(() => {
     if (!proposalId) return;
@@ -106,6 +122,11 @@ const ProposalManagementPage = () => {
   }, [portalId, proposalId]);
 
   const selectedProposal = proposals.find((proposal) => (proposal._id || proposal.id) === proposalId);
+  const orderedProposals = useMemo(() => [...proposals].sort((a, b) => {
+    const aId = a._id || a.id;
+    const bId = b._id || b.id;
+    return Number(favoriteProposalIds.includes(bId)) - Number(favoriteProposalIds.includes(aId));
+  }), [favoriteProposalIds, proposals]);
   const sections = useMemo(() => [...new Set(items.map((item) => item.section))], [items]);
   const hasChanges = JSON.stringify(items) !== JSON.stringify(savedItems);
   const filteredItems = useMemo(() => {
@@ -130,6 +151,17 @@ const ProposalManagementPage = () => {
   const updateItem = (itemId, field, value) => {
     setItems((current) => current.map((item) => (item._id === itemId ? { ...item, [field]: value } : item)));
     setMessage('');
+  };
+
+  const toggleProposalFavorite = async (entityId) => {
+    const wasFavorite = favoriteProposalIds.includes(entityId);
+    setFavoriteProposalIds((current) => wasFavorite ? current.filter((id) => id !== entityId) : [entityId, ...current]);
+    try {
+      await setPortalFavorite({ portalId, entityType: 'proposal', entityId, favorite: !wasFavorite });
+    } catch (requestError) {
+      setFavoriteProposalIds((current) => wasFavorite ? [entityId, ...current.filter((id) => id !== entityId)] : current.filter((id) => id !== entityId));
+      setError(requestError.response?.data?.message || 'No se pudo actualizar el favorito.');
+    }
   };
 
   const updateVersion = (itemId, value) => {
@@ -193,21 +225,40 @@ const ProposalManagementPage = () => {
                 <p className="flex items-center gap-2 text-sm font-black uppercase text-[#ff3f6c]">
                   <ClipboardCheck size={17} /> Gestion de propuestas
                 </p>
-                <h1 className="mt-3 font-display text-4xl text-[#4b1406] md:text-5xl">Control de calidad</h1>
+                <h1
+                  style={{ fontFamily: "'AlfaSlabOne', serif" }}
+                  className="mt-3 text-4xl text-[#4b1406] md:text-5xl"
+                >
+                  Control de calidad
+                </h1>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-[#bd4b27]">
                   Sigue el avance, asigna acciones y compara la calidad de cada version de la propuesta.
                 </p>
               </div>
-              <label className="min-w-0 xl:w-[440px]">
+              <div ref={proposalMenuRef} className="relative min-w-0 xl:w-[440px]">
                 <span className="text-xs font-black uppercase text-[#9b3f22]">Propuesta activa</span>
-                <div className="relative mt-2">
-                  <select value={proposalId} onChange={(event) => setProposalId(event.target.value)} className="w-full appearance-none rounded-xl border border-orange-200 bg-white px-4 py-3 pr-10 font-bold outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100">
-                    {!proposals.length && <option value="">No hay propuestas disponibles</option>}
-                    {proposals.map((proposal) => <option key={proposal._id || proposal.id} value={proposal._id || proposal.id}>{proposal.acronimo ? `${proposal.acronimo} - ` : ''}{proposal.nombre}</option>)}
-                  </select>
-                  <ChevronDown size={18} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-orange-600" />
-                </div>
-              </label>
+                <button type="button" onClick={() => setIsProposalMenuOpen((open) => !open)} className="mt-2 flex min-h-12 w-full items-center gap-3 rounded-xl border border-orange-200 bg-white px-4 py-3 text-left font-bold outline-none transition hover:border-orange-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100" aria-haspopup="listbox" aria-expanded={isProposalMenuOpen}>
+                  {selectedProposal && <Star size={17} className={favoriteProposalIds.includes(proposalId) ? 'shrink-0 text-amber-500' : 'shrink-0 text-orange-200'} fill={favoriteProposalIds.includes(proposalId) ? 'currentColor' : 'none'} />}
+                  <span className="min-w-0 flex-1 truncate">{selectedProposal ? `${selectedProposal.acronimo ? `${selectedProposal.acronimo} - ` : ''}${selectedProposal.nombre}` : 'No hay propuestas disponibles'}</span>
+                  <ChevronDown size={18} className={`shrink-0 text-orange-600 transition ${isProposalMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence>
+                  {isProposalMenuOpen && proposals.length > 0 && (
+                    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.16 }} className="absolute right-0 z-40 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-orange-200 bg-white p-1.5 shadow-xl" role="listbox">
+                      {orderedProposals.map((proposal) => {
+                        const entityId = proposal._id || proposal.id;
+                        const favorite = favoriteProposalIds.includes(entityId);
+                        return <motion.div layout="position" transition={{ layout: { duration: 0.48, ease: [0.22, 1, 0.36, 1] } }} key={entityId} className={`flex items-center rounded-lg transition ${proposalId === entityId ? 'bg-orange-50' : 'hover:bg-orange-50/70'}`}>
+                          <button type="button" onClick={() => { setProposalId(entityId); setIsProposalMenuOpen(false); }} className="min-w-0 flex-1 px-3 py-2.5 text-left" role="option" aria-selected={proposalId === entityId}>
+                            <span className="block truncate text-sm font-bold text-[#4b1406]">{proposal.acronimo ? `${proposal.acronimo} - ` : ''}{proposal.nombre}</span>
+                          </button>
+                          <motion.button type="button" onClick={() => toggleProposalFavorite(entityId)} whileTap={{ scale: 0.88 }} transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }} className={`mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-amber-50 ${favorite ? 'text-amber-500' : 'text-orange-200 hover:text-amber-500'}`} title={favorite ? 'Quitar de favoritos' : 'Fijar arriba'} aria-label={favorite ? 'Quitar propuesta de favoritos' : 'Marcar propuesta como favorita'}><Star size={18} fill={favorite ? 'currentColor' : 'none'} /></motion.button>
+                        </motion.div>;
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </header>
 

@@ -20,6 +20,7 @@ import {
   Search,
   Sheet,
   Square,
+  Star,
   Trash2,
   Upload,
   UserPlus,
@@ -41,6 +42,7 @@ import {
   unlinkContactFromOpportunityRow,
   updateOpportunityWorkbookRow,
 } from '../services/opportunityWorkbookService.js';
+import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
 
 const OPPORTUNITY_ROWS_PAGE_SIZE = 80;
 
@@ -348,6 +350,19 @@ const buildMergedTable = (rows, columns) => {
   };
 };
 
+const pinFavoriteOpportunityGroups = (rows, headers, favoriteIds) => {
+  if (!rows.length || !favoriteIds.length) return rows;
+  const projectIndex = headers.findIndex((header) => primaryGroupHeaders.has(normalizeHeader(header)));
+  if (projectIndex < 0) return rows;
+  const groups = [];
+  rows.forEach((row) => {
+    if (!groups.length || isFilled(row.values[projectIndex])) groups.push([]);
+    groups[groups.length - 1].push(row);
+  });
+  const favoriteSet = new Set(favoriteIds);
+  return [...groups.filter((group) => favoriteSet.has(group[0]?._id)), ...groups.filter((group) => !favoriteSet.has(group[0]?._id))].flat();
+};
+
 const makeUniqueHeaders = (rawHeaders, columnCount) => {
   const occurrences = new Map();
 
@@ -523,6 +538,16 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
   const [isPromotingOpportunities, setIsPromotingOpportunities] = useState(false);
   const [promotionError, setPromotionError] = useState('');
+  const [favoriteOpportunityIds, setFavoriteOpportunityIds] = useState([]);
+
+  useEffect(() => {
+    if (isContactsLibrary) return undefined;
+    let active = true;
+    getPortalFavorites(portalId)
+      .then((response) => { if (active) setFavoriteOpportunityIds(response.data?.opportunities || []); })
+      .catch(() => { if (active) setFavoriteOpportunityIds([]); });
+    return () => { active = false; };
+  }, [isContactsLibrary, portalId]);
 
   const readyDraftContactFilters = useMemo(
     () =>
@@ -688,14 +713,25 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const filteredRows = useMemo(() => {
     const rows = activeWorkbook?.rows || [];
     const normalizedSearch = searchValue.trim().toLocaleLowerCase('es');
-    if (!normalizedSearch) return rows;
-
-    return rows.filter((row) =>
+    const matchingRows = !normalizedSearch ? rows : rows.filter((row) =>
       row.values.some((value) =>
         displayCell(value).toLocaleLowerCase('es').includes(normalizedSearch)
       )
     );
-  }, [activeWorkbook, searchValue]);
+    if (isContactsLibrary) return matchingRows;
+    return pinFavoriteOpportunityGroups(matchingRows, activeWorkbook?.workbook?.headers || [], favoriteOpportunityIds);
+  }, [activeWorkbook, favoriteOpportunityIds, isContactsLibrary, searchValue]);
+
+  const toggleOpportunityFavorite = async (entityId) => {
+    const wasFavorite = favoriteOpportunityIds.includes(entityId);
+    setFavoriteOpportunityIds((current) => wasFavorite ? current.filter((id) => id !== entityId) : [entityId, ...current]);
+    try {
+      await setPortalFavorite({ portalId, entityType: 'opportunity', entityId, favorite: !wasFavorite });
+    } catch (error) {
+      setFavoriteOpportunityIds((current) => wasFavorite ? [entityId, ...current.filter((id) => id !== entityId)] : current.filter((id) => id !== entityId));
+      setNotice(error.response?.data?.message || 'No se pudo actualizar el favorito.');
+    }
+  };
 
   const selectedContactRows = useMemo(() => {
     const selectedIds = new Set(selectedContactRowIds);
@@ -1962,7 +1998,9 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                               const groupIsTinted = mergedTable.rowGroups[rowIndex] % 2 === 0;
 
                               return (
-                                <tr
+                                <motion.tr
+                                  layout="position"
+                                  transition={{ layout: { duration: 0.62, ease: [0.22, 1, 0.36, 1] } }}
                                   key={row._id}
                                   className={`group text-center text-sm text-orange-950 transition hover:brightness-[0.98] ${
                                     groupIsTinted ? 'bg-orange-50' : 'bg-white'
@@ -2011,10 +2049,20 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                         rowSpan={mergedTable.contactSpanByRow.get(rowIndex) || 1}
                                         className="sticky left-0 z-10 w-36 border border-orange-100 bg-inherit px-3 py-3 align-middle"
                                       >
+                                        <div className="flex items-center justify-center gap-1.5">
+                                        <motion.button
+                                          type="button"
+                                          onClick={() => toggleOpportunityFavorite(row._id)}
+                                          whileTap={{ scale: 0.88 }}
+                                          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                                          className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border bg-white shadow-sm transition hover:border-amber-300 hover:bg-amber-50 ${favoriteOpportunityIds.includes(row._id) ? 'border-amber-200 text-amber-500' : 'border-orange-100 text-orange-200 hover:text-amber-500'}`}
+                                          title={favoriteOpportunityIds.includes(row._id) ? 'Quitar de favoritos' : 'Fijar arriba'}
+                                          aria-label={favoriteOpportunityIds.includes(row._id) ? 'Quitar oportunidad de favoritos' : 'Marcar oportunidad como favorita'}
+                                        ><Star size={17} fill={favoriteOpportunityIds.includes(row._id) ? 'currentColor' : 'none'} /></motion.button>
                                         <button
                                           type="button"
                                           onClick={() => toggleOpportunitySelection(row._id)}
-                                          className={`mx-auto inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold shadow-sm transition ${
+                                          className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-semibold shadow-sm transition ${
                                             selectedOpportunityRowIds.includes(row._id)
                                               ? 'border-orange-300 bg-orange-500 text-white'
                                               : 'border-orange-100 bg-white text-orange-700 hover:border-orange-300 hover:bg-orange-50'
@@ -2022,8 +2070,9 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                           aria-label="Seleccionar oportunidad para crear propuesta"
                                         >
                                           {selectedOpportunityRowIds.includes(row._id) ? <CheckSquare size={15} /> : <Square size={15} />}
-                                          {selectedOpportunityRowIds.includes(row._id) ? 'Seleccionada' : 'Seleccionar'}
+                                          {selectedOpportunityRowIds.includes(row._id) ? 'Lista' : 'Elegir'}
                                         </button>
+                                        </div>
                                       </td>
                                     )}
                                   {visibleColumns.map((column, columnPosition) => {
@@ -2141,7 +2190,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                         </div>
                                       </td>
                                     )}
-                                </tr>
+                                </motion.tr>
                               );
                             })}
                           </tbody>
