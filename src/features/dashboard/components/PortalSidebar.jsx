@@ -16,9 +16,7 @@ import {
   Settings,
   SquareChartGantt,
   Users,
-  Wallet,
   X,
-  CalendarDays,
   ClipboardCheck,
 } from 'lucide-react';
 
@@ -42,9 +40,7 @@ const navigationItems = [
   { label: 'Contactos', icon: ContactRound, path: 'contacts' },
   { label: 'Equipo', icon: Users, path: 'team' },
   { label: 'Gantt', icon: SquareChartGantt, path: 'gantt' },
-  { label: 'Financiacion', icon: Wallet, path: 'funding' },
   { label: 'Documentos', icon: FileText, path: 'documents' },
-  { label: 'Calendario', icon: CalendarDays, path: 'calendar' },
   { label: 'Ajustes', icon: Settings, path: 'settings' },
 ];
 
