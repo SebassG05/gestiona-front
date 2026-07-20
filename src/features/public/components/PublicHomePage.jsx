@@ -205,14 +205,24 @@ const PublicHomePage = () => {
         </div>
       </section>
 
-      <footer className="border-t border-orange-100 bg-[#fffaf5] px-5 py-7 md:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 text-sm text-[#8b3a20] sm:flex-row sm:items-center sm:justify-between">
-          <p><strong className="text-[#3b1208]">Gestiona-2</strong> · Una plataforma de Evenor-Tech</p>
-          <nav className="flex flex-wrap gap-5" aria-label="Informacion legal">
-            <Link to="/aviso-legal" className="hover:text-orange-600">Aviso legal</Link>
-            <Link to="/politica-privacidad" className="hover:text-orange-600">Privacidad</Link>
-            <Link to="/politica-cookies" className="hover:text-orange-600">Cookies</Link>
-          </nav>
+      <footer className="border-t border-orange-100 bg-white/85 px-5 py-7 backdrop-blur md:px-8">
+        <div className="mx-auto flex w-full max-w-7xl flex-col items-center text-center md:flex-row md:justify-between md:text-left">
+          <div>
+            <p className="text-sm font-black text-orange-950">Gestiona-2</p>
+            <p className="mt-1 text-xs text-orange-500">Gestion de proyectos colaborativa</p>
+          </div>
+          <div className="mt-5 flex flex-col items-center md:mt-0 md:items-end">
+            <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-semibold text-[#9b3f22]" aria-label="Informacion legal">
+              <Link to="/aviso-legal" className="transition hover:text-orange-600">Aviso legal</Link>
+              <span className="h-3 w-px bg-orange-200" aria-hidden="true" />
+              <Link to="/politica-privacidad" className="transition hover:text-orange-600">Privacidad</Link>
+              <span className="h-3 w-px bg-orange-200" aria-hidden="true" />
+              <Link to="/politica-cookies" className="transition hover:text-orange-600">Cookies</Link>
+            </nav>
+            <p className="mt-4 text-[11px] font-medium text-orange-400 md:mt-2">
+              Desarrollado por <span className="font-bold text-orange-600">Evenor-Tech</span>
+            </p>
+          </div>
         </div>
       </footer>
     </main>

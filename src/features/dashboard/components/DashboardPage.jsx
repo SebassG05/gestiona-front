@@ -56,7 +56,7 @@ const DashboardPage = () => {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: '#fafafa' }}>
+    <div className="relative flex min-h-screen flex-col overflow-x-hidden" style={{ backgroundColor: '#fafafa' }}>
 
       {/* Líneas decorativas de fondo */}
       <motion.svg
@@ -102,7 +102,7 @@ const DashboardPage = () => {
       </motion.svg>
 
       {/* Contenido principal */}
-      <main className="relative z-10 w-full max-w-screen-xxl mx-auto px-4 sm:px-6 xl:px-8 py-8 sm:py-12 xl:py-30">
+      <main className="relative z-10 mx-auto w-full max-w-screen-xxl flex-1 px-4 py-8 sm:px-6 sm:py-12 xl:px-8 xl:py-30">
         {/* Título de bienvenida */}
         <motion.div
           initial={{ opacity: 0, y: -16 }}
@@ -182,17 +182,25 @@ const DashboardPage = () => {
         </motion.div>
       </main>
 
-      <footer className="absolute bottom-13 left-1/2 z-10 flex -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4 text-center text-xs text-orange-400">
-        <Link to="/aviso-legal" className="transition hover:text-orange-600 hover:underline">
-          Aviso Legal
-        </Link>
-        <Link to="/politica-privacidad" className="transition hover:text-orange-600 hover:underline">
-          Política de Privacidad
-        </Link>
-        <Link to="/politica-cookies" className="transition hover:text-orange-600 hover:underline">
-          Política de Cookies
-        </Link>
-        <span className="font-medium text-orange-500">Desarrollado por Evenor-Tech</span>
+      <footer className="relative z-10 mt-5 w-full border-t border-orange-100 bg-white/85 px-5 pb-20 pt-7 backdrop-blur sm:mt-8 sm:px-8 sm:pb-7">
+        <div className="mx-auto flex w-full max-w-7xl flex-col items-center text-center md:flex-row md:justify-between md:text-left">
+          <div>
+            <p className="text-sm font-black text-orange-950">Gestiona-2</p>
+            <p className="mt-1 text-xs text-orange-500">Gestión de proyectos colaborativa</p>
+          </div>
+          <div className="mt-5 flex flex-col items-center md:mt-0 md:items-end">
+            <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-semibold text-[#9b3f22]" aria-label="Información legal">
+              <Link to="/aviso-legal" className="transition hover:text-orange-600">Aviso legal</Link>
+              <span className="h-3 w-px bg-orange-200" aria-hidden="true" />
+              <Link to="/politica-privacidad" className="transition hover:text-orange-600">Privacidad</Link>
+              <span className="h-3 w-px bg-orange-200" aria-hidden="true" />
+              <Link to="/politica-cookies" className="transition hover:text-orange-600">Cookies</Link>
+            </nav>
+            <p className="mt-4 text-[11px] font-medium text-orange-400 md:mt-2">
+              Desarrollado por <span className="font-bold text-orange-600">Evenor-Tech</span>
+            </p>
+          </div>
+        </div>
       </footer>
 
       {/* Botón cerrar sesión — imagen abajo derecha */}
