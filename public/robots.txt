@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://gestiona2.evenor-tech.com/sitemap.xml

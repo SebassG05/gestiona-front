@@ -17,6 +17,8 @@ import PortalWorkspacePage from '../features/dashboard/components/PortalWorkspac
 import CookieBanner from '../features/legal/components/CookieBanner.jsx';
 import LegalPage from '../features/legal/components/LegalPage.jsx';
 import { hasValidSession } from '../utils/session.js';
+import PublicHomePage from '../features/public/components/PublicHomePage.jsx';
+import SeoManager from '../features/public/components/SeoManager.jsx';
 
 const hasSession = () => hasValidSession();
 
@@ -48,8 +50,9 @@ const PublicOnlyRoute = ({ children }) => {
 const AppRouter = () => {
   return (
     <BrowserRouter>
+      <SeoManager />
       <Routes>
-        <Route path="/" element={<Navigate to={hasSession() ? '/dashboard' : '/login'} replace />} />
+        <Route path="/" element={<PublicHomePage />} />
         <Route
           path="/login"
           element={
