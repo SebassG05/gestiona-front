@@ -95,46 +95,46 @@ const PublicHomePage = () => {
         />
         <div className="absolute inset-0 bg-[#3b1208]/72" />
 
-        <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 md:px-8">
+        <header className="relative z-10 mx-auto flex w-full max-w-[1520px] items-center justify-between px-5 py-5 md:px-8 xl:py-7">
           <Link to="/" className="flex items-center gap-3" aria-label="Gestiona-2, inicio">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white shadow-sm">
-              <img src={LOGO_URL} alt="" className="h-9 w-9 object-contain" />
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white shadow-sm xl:h-13 xl:w-13">
+              <img src={LOGO_URL} alt="" className="h-9 w-9 object-contain xl:h-11 xl:w-11" />
             </span>
-            <span className="text-xl font-black">Gestiona-2</span>
+            <span className="text-xl font-black xl:text-2xl">Gestiona-2</span>
           </Link>
           <Link
             to={accessPath}
-            className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/35 bg-white/10 px-4 text-sm font-black backdrop-blur transition hover:bg-white hover:text-[#7b2a10]"
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/35 bg-white/10 px-4 text-sm font-black backdrop-blur transition hover:bg-white hover:text-[#7b2a10] xl:h-13 xl:px-6 xl:text-base"
           >
             {hasValidSession() ? 'Ir al panel' : 'Acceder'}
             <ArrowRight size={17} />
           </Link>
         </header>
 
-        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center px-5 pb-20 pt-10 md:px-8 md:pb-24">
+        <div className="relative z-10 mx-auto flex w-full max-w-[1520px] flex-1 items-center px-5 pb-20 pt-10 md:px-8 md:pb-24">
           <motion.div
             initial={{ opacity: 0, y: 22 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-            className="max-w-4xl"
+            className="max-w-4xl xl:max-w-5xl"
           >
-            <p className="text-sm font-black uppercase text-orange-300">Gestion de proyectos colaborativa</p>
-            <h1 className="mt-5 font-display text-5xl leading-tight md:text-7xl">Gestiona-2</h1>
-            <p className="mt-6 max-w-3xl text-lg leading-8 text-orange-50 md:text-xl">
+            <p className="text-sm font-black uppercase text-orange-300 xl:text-base">Gestion de proyectos colaborativa</p>
+            <h1 className="mt-5 font-display text-5xl leading-tight md:text-7xl xl:text-8xl">Gestiona-2</h1>
+            <p className="mt-6 max-w-3xl text-lg leading-8 text-orange-50 md:text-xl xl:max-w-4xl xl:text-2xl xl:leading-10">
               Una plataforma de Evenor-Tech para coordinar proyectos, oportunidades y propuestas
               europeas con el equipo, la informacion y las decisiones en un mismo lugar.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-wrap gap-3 xl:mt-10 xl:gap-4">
               <Link
                 to={accessPath}
-                className="inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 px-6 font-black text-white shadow-lg shadow-orange-950/20 transition hover:-translate-y-0.5"
+                className="inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 px-6 font-black text-white shadow-lg shadow-orange-950/20 transition hover:-translate-y-0.5 xl:h-14 xl:px-8 xl:text-lg"
               >
                 {hasValidSession() ? 'Abrir Gestiona-2' : 'Entrar en Gestiona-2'}
                 <ArrowRight size={18} />
               </Link>
               <a
                 href="#capacidades"
-                className="inline-flex h-12 items-center rounded-xl border border-white/40 px-6 font-black transition hover:bg-white/10"
+                className="inline-flex h-12 items-center rounded-xl border border-white/40 px-6 font-black transition hover:bg-white/10 xl:h-14 xl:px-8 xl:text-lg"
               >
                 Conocer la plataforma
               </a>
