@@ -12,9 +12,11 @@ import {
   ContactRound,
   Copy,
   Edit3,
+  FilePenLine,
   Filter,
   FileSpreadsheet,
   Plus,
+  Loader2,
   Search,
   Sheet,
   Square,
@@ -23,7 +25,7 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import PortalSidebar from './PortalSidebar.jsx';
 import {
   createOpportunityWorkbookRow,
@@ -34,6 +36,7 @@ import {
   getOpportunityWorkbooks,
   importOpportunityWorkbook,
   linkContactsToOpportunityRow,
+  promoteOpportunitiesToProposals,
   searchOpportunityWorkbooks,
   unlinkContactFromOpportunityRow,
   updateOpportunityWorkbookRow,
@@ -467,6 +470,7 @@ const libraryCopies = {
 
 const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const { portalId } = useParams();
+  const navigate = useNavigate();
   const copy = libraryCopies[libraryType] || libraryCopies.opportunities;
   const workbookCategory = copy.category;
   const isContactsLibrary = workbookCategory === 'contacts';
@@ -515,6 +519,10 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [isSearchingLinkedContacts, setIsSearchingLinkedContacts] = useState(false);
   const [linkingSearchContactId, setLinkingSearchContactId] = useState('');
   const [selectedOpportunityDetail, setSelectedOpportunityDetail] = useState(null);
+  const [selectedOpportunityRowIds, setSelectedOpportunityRowIds] = useState([]);
+  const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
+  const [isPromotingOpportunities, setIsPromotingOpportunities] = useState(false);
+  const [promotionError, setPromotionError] = useState('');
 
   const readyDraftContactFilters = useMemo(
     () =>
@@ -586,6 +594,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
   useEffect(() => {
     setSelectedContactRowIds([]);
+    setSelectedOpportunityRowIds([]);
     setSelectedOpportunityDetail(null);
   }, [activeWorkbookId, workbookCategory, appliedContactFilters]);
 
@@ -1307,6 +1316,62 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     () => buildMergedTable(filteredRows, visibleColumns),
     [filteredRows, visibleColumns]
   );
+  const selectableOpportunityRows = useMemo(
+    () =>
+      isContactsLibrary
+        ? []
+        : filteredRows.filter((_, rowIndex) => !mergedTable.contactHiddenRows.has(rowIndex)),
+    [filteredRows, isContactsLibrary, mergedTable.contactHiddenRows]
+  );
+  const visibleOpportunitiesAreSelected = useMemo(
+    () =>
+      selectableOpportunityRows.length > 0 &&
+      selectableOpportunityRows.every((row) => selectedOpportunityRowIds.includes(row._id)),
+    [selectableOpportunityRows, selectedOpportunityRowIds]
+  );
+
+  const toggleOpportunitySelection = (rowId) => {
+    setSelectedOpportunityRowIds((current) =>
+      current.includes(rowId) ? current.filter((id) => id !== rowId) : [...current, rowId]
+    );
+  };
+
+  const toggleVisibleOpportunities = () => {
+    const visibleIds = selectableOpportunityRows.map((row) => row._id);
+    setSelectedOpportunityRowIds((current) => {
+      if (visibleIds.every((id) => current.includes(id))) {
+        return current.filter((id) => !visibleIds.includes(id));
+      }
+      return [...new Set([...current, ...visibleIds])];
+    });
+  };
+
+  const promoteSelectedOpportunities = async () => {
+    if (!selectedOpportunityRowIds.length || isPromotingOpportunities) return;
+    setIsPromotingOpportunities(true);
+    setPromotionError('');
+    try {
+      const response = await promoteOpportunitiesToProposals({
+        portalId,
+        rowIds: selectedOpportunityRowIds,
+      });
+      const result = response.data || {};
+      setIsPromotionModalOpen(false);
+      setSelectedOpportunityRowIds([]);
+      navigate(`/dashboard/portal/${portalId}/proposals`, {
+        state: {
+          selectedProposalId: result.created?.[0]?.id || null,
+          notice: result.created?.length
+            ? `${result.created.length} propuesta${result.created.length === 1 ? '' : 's'} creada${result.created.length === 1 ? '' : 's'} desde Oportunidades.${result.skipped ? ` ${result.skipped} ya existian.` : ''}`
+            : 'Las oportunidades seleccionadas ya estaban en Propuestas.',
+        },
+      });
+    } catch (error) {
+      setPromotionError(error.response?.data?.message || 'No se pudieron convertir las oportunidades.');
+    } finally {
+      setIsPromotingOpportunities(false);
+    }
+  };
   const tableMinWidth = Math.max(
     900,
     visibleColumns.length * 220 + (isContactsLibrary ? 136 : 160)
@@ -1600,6 +1665,21 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                           Anadir a oportunidad ({selectedContactRowIds.length})
                         </button>
                       )}
+                      {!isContactsLibrary && selectedOpportunityRowIds.length > 0 && (
+                        <motion.button
+                          type="button"
+                          initial={{ opacity: 0, scale: 0.96 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          onClick={() => {
+                            setPromotionError('');
+                            setIsPromotionModalOpen(true);
+                          }}
+                          className="inline-flex h-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                        >
+                          <FilePenLine size={16} strokeWidth={2.1} />
+                          Crear propuesta ({selectedOpportunityRowIds.length})
+                        </motion.button>
+                      )}
                       {isContactsLibrary && (
                         <button
                           type="button"
@@ -1848,6 +1928,20 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                   </button>
                                 </th>
                               )}
+                              {!isContactsLibrary && (
+                                <th className="sticky left-0 z-10 w-36 border border-white/25 bg-orange-500 px-3 py-3">
+                                  <button
+                                    type="button"
+                                    onClick={toggleVisibleOpportunities}
+                                    disabled={!selectableOpportunityRows.length}
+                                    className="mx-auto inline-flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-white/10 disabled:cursor-default disabled:opacity-50"
+                                    title={visibleOpportunitiesAreSelected ? 'Quitar seleccion visible' : 'Seleccionar oportunidades visibles'}
+                                  >
+                                    {visibleOpportunitiesAreSelected ? <CheckSquare size={15} /> : <Square size={15} />}
+                                    Flujo
+                                  </button>
+                                </th>
+                              )}
                               {visibleColumns.map((column) => (
                                 <th
                                   key={column.header}
@@ -1911,6 +2005,27 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                       </div>
                                     </td>
                                   )}
+                                  {!isContactsLibrary &&
+                                    !mergedTable.contactHiddenRows.has(rowIndex) && (
+                                      <td
+                                        rowSpan={mergedTable.contactSpanByRow.get(rowIndex) || 1}
+                                        className="sticky left-0 z-10 w-36 border border-orange-100 bg-inherit px-3 py-3 align-middle"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleOpportunitySelection(row._id)}
+                                          className={`mx-auto inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold shadow-sm transition ${
+                                            selectedOpportunityRowIds.includes(row._id)
+                                              ? 'border-orange-300 bg-orange-500 text-white'
+                                              : 'border-orange-100 bg-white text-orange-700 hover:border-orange-300 hover:bg-orange-50'
+                                          }`}
+                                          aria-label="Seleccionar oportunidad para crear propuesta"
+                                        >
+                                          {selectedOpportunityRowIds.includes(row._id) ? <CheckSquare size={15} /> : <Square size={15} />}
+                                          {selectedOpportunityRowIds.includes(row._id) ? 'Seleccionada' : 'Seleccionar'}
+                                        </button>
+                                      </td>
+                                    )}
                                   {visibleColumns.map((column, columnPosition) => {
                                     const cellKey = `${rowIndex}:${columnPosition}`;
                                     if (mergedTable.hiddenCells.has(cellKey)) return null;
@@ -2079,6 +2194,21 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
         </motion.main>
 
         <AnimatePresence>
+          {isPromotionModalOpen && (
+            <PromoteOpportunitiesModal
+              count={selectedOpportunityRowIds.length}
+              workbookName={activeWorkbook?.workbook?.name || ''}
+              isSaving={isPromotingOpportunities}
+              errorMessage={promotionError}
+              onCancel={() => {
+                if (!isPromotingOpportunities) setIsPromotionModalOpen(false);
+              }}
+              onConfirm={promoteSelectedOpportunities}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
           {rowModal && activeWorkbook && (
             <ContactRowModal
               mode={rowModal.mode}
@@ -2160,6 +2290,83 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     </PortalSidebar>
   );
 };
+
+const PromoteOpportunitiesModal = ({
+  count,
+  workbookName,
+  isSaving,
+  errorMessage,
+  onCancel,
+  onConfirm,
+}) => (
+  <motion.div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/35 px-4 backdrop-blur-sm"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onCancel();
+    }}
+  >
+    <motion.section
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="promote-opportunities-title"
+      initial={{ opacity: 0, y: 14, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      className="w-full max-w-xl rounded-[24px] border border-orange-100 bg-white p-7 shadow-2xl"
+    >
+      <div className="flex items-start gap-4">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-orange-50 text-orange-600">
+          <FilePenLine size={22} />
+        </span>
+        <div>
+          <p className="text-sm font-black uppercase text-[#ff3f6c]">Siguiente paso</p>
+          <h2 id="promote-opportunities-title" className="mt-1 text-2xl font-black text-orange-950">
+            Crear {count === 1 ? 'una propuesta' : `${count} propuestas`}
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-[#8b3a20]">
+            Se copiaran los datos disponibles desde <strong>{workbookName}</strong>. Podras completar
+            responsables, presupuesto y seguimiento desde la seccion Propuestas.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <CheckCircle2 size={17} className="mt-0.5 shrink-0" />
+        <p>Las oportunidades ya convertidas se detectaran y no se duplicaran.</p>
+      </div>
+
+      {errorMessage && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+          <AlertCircle size={17} /> {errorMessage}
+        </div>
+      )}
+
+      <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSaving}
+          className="h-11 cursor-pointer rounded-xl border border-orange-200 px-5 text-sm font-semibold text-orange-800 transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isSaving}
+          className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60"
+        >
+          {isSaving ? <Loader2 size={17} className="animate-spin" /> : <FilePenLine size={17} />}
+          {isSaving ? 'Creando...' : 'Crear y continuar'}
+        </button>
+      </div>
+    </motion.section>
+  </motion.div>
+);
 
 const OpportunityTopicDetailPanel = ({ detail, onClose, onOpenContacts }) => {
   const detailRows = detail.rows
