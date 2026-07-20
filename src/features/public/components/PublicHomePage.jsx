@@ -43,6 +43,15 @@ const PublicHomePage = () => {
   );
   const accessPath = hasValidSession() ? '/dashboard' : '/login';
 
+  const handleAccess = (event) => {
+    event.preventDefault();
+    if (document.startViewTransition) {
+      document.startViewTransition(() => navigate(accessPath));
+      return;
+    }
+    navigate(accessPath);
+  };
+
   useEffect(() => {
     if (!location.state?.logoutSuccess) return undefined;
     navigate(location.pathname, { replace: true, state: null });
@@ -104,6 +113,7 @@ const PublicHomePage = () => {
           </Link>
           <Link
             to={accessPath}
+            onClick={handleAccess}
             className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/35 bg-white/10 px-4 text-sm font-black backdrop-blur transition hover:bg-white hover:text-[#7b2a10] xl:h-13 xl:px-6 xl:text-base"
           >
             {hasValidSession() ? 'Ir al panel' : 'Acceder'}
@@ -127,6 +137,7 @@ const PublicHomePage = () => {
             <div className="mt-8 flex flex-wrap gap-3 xl:mt-10 xl:gap-4">
               <Link
                 to={accessPath}
+                onClick={handleAccess}
                 className="inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 px-6 font-black text-white shadow-lg shadow-orange-950/20 transition hover:-translate-y-0.5 xl:h-14 xl:px-8 xl:text-lg"
               >
                 {hasValidSession() ? 'Abrir Gestiona-2' : 'Entrar en Gestiona-2'}

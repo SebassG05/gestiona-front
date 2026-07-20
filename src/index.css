@@ -46,3 +46,8 @@
 .gestiona-scrollbar-hidden::-webkit-scrollbar {
   display: none;
 }
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 380ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
