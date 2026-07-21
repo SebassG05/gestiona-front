@@ -97,6 +97,7 @@ const emptyForm = {
   title: '',
   description: '',
   workDate: '',
+  endDate: '',
   assignedTo: '',
   status: 'in_progress',
   priority: 'medium',
@@ -247,9 +248,11 @@ const getUserColor = (value) => {
 
 const countInclusiveDays = (startDate, endDate) => {
   if (!startDate || !endDate || startDate > endDate) return 0;
-  const start = parseActivityDate(startDate);
-  const end = parseActivityDate(endDate);
-  return Math.floor((end - start) / 86400000) + 1;
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+  const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+  const start = Date.UTC(startYear, startMonth - 1, startDay);
+  const end = Date.UTC(endYear, endMonth - 1, endDay);
+  return Math.round((end - start) / 86400000) + 1;
 };
 
 const formatShortDate = (value) => {
@@ -312,6 +315,15 @@ const startsVacationSegment = (value, vacation, date) =>
 const endsVacationSegment = (value, vacation, date) =>
   vacation.endDate === value || date.getDay() === 0 || value === getMonthEndValue(date);
 
+const getActivityEndValue = (activity) =>
+  toDateInputValue(parseActivityDate(activity.endDate || activity.workDate));
+
+const startsActivitySegment = (value, activity, date) =>
+  toDateInputValue(parseActivityDate(activity.workDate)) === value || date.getDay() === 1 || date.getDate() === 1;
+
+const endsActivitySegment = (value, activity, date) =>
+  getActivityEndValue(activity) === value || date.getDay() === 0 || value === getMonthEndValue(date);
+
 const PortalTeamPage = () => {
   const { portalId } = useParams();
   const navigate = useNavigate();
@@ -322,7 +334,11 @@ const PortalTeamPage = () => {
   const [trips, setTrips] = useState([]);
   const [selectedDate, setSelectedDate] = useState(toDateInputValue(new Date()));
   const [monthCursor, setMonthCursor] = useState(new Date());
-  const [form, setForm] = useState({ ...emptyForm, workDate: toDateInputValue(new Date()) });
+  const [form, setForm] = useState({
+    ...emptyForm,
+    workDate: toDateInputValue(new Date()),
+    endDate: toDateInputValue(new Date()),
+  });
   const [vacationForm, setVacationForm] = useState({
     startDate: toDateInputValue(new Date()),
     endDate: toDateInputValue(new Date()),
@@ -473,7 +489,7 @@ const PortalTeamPage = () => {
     const weekActivities = activities.filter((activity) => {
       if (!activity.workDate) return false;
       const workDate = toDateInputValue(parseActivityDate(activity.workDate));
-      return workDate >= startDate && workDate <= endDate;
+      return rangesOverlap(workDate, getActivityEndValue(activity), startDate, endDate);
     });
     const weekVacations = vacations.filter((vacation) => {
       if (!vacation.startDate || !vacation.endDate) return false;
@@ -558,15 +574,17 @@ const PortalTeamPage = () => {
     }, {});
   }, [calendarDays]);
 
-  const activitiesByDate = useMemo(
-    () =>
-      visibleActivities.reduce((acc, activity) => {
-        const key = toDateInputValue(parseActivityDate(activity.workDate));
-        acc[key] = [...(acc[key] || []), activity];
-        return acc;
-      }, {}),
-    [visibleActivities]
-  );
+  const activitiesByDate = useMemo(() => {
+    const grouped = {};
+    calendarDays.forEach(({ date }) => {
+      const key = toDateInputValue(date);
+      grouped[key] = visibleActivities.filter((activity) => {
+        const start = toDateInputValue(parseActivityDate(activity.workDate));
+        return key >= start && key <= getActivityEndValue(activity);
+      });
+    });
+    return grouped;
+  }, [calendarDays, visibleActivities]);
 
   const vacationsByDate = useMemo(() => {
     const grouped = {};
@@ -619,6 +637,7 @@ const PortalTeamPage = () => {
     setForm({
       ...emptyForm,
       workDate: selectedDate,
+      endDate: selectedDate,
       assignedTo: currentUserId,
     });
   };
@@ -628,6 +647,7 @@ const PortalTeamPage = () => {
       setForm((current) => ({
         ...current,
         workDate: isSelectedPastDate ? minWorkDate : selectedDate,
+        endDate: isSelectedPastDate ? minWorkDate : selectedDate,
         assignedTo: current.assignedTo || currentUserId,
       }));
     }
@@ -648,6 +668,11 @@ const PortalTeamPage = () => {
       return;
     }
 
+    if (form.endDate < form.workDate) {
+      setError('La fecha de fin debe ser igual o posterior a la fecha de inicio');
+      return;
+    }
+
     if (!form.assignedTo) {
       setError('Selecciona una persona del portal para asignar la tarea');
       return;
@@ -660,6 +685,7 @@ const PortalTeamPage = () => {
         title: form.title.trim(),
         description: form.description.trim(),
         workDate: form.workDate,
+        endDate: form.endDate,
         assignedTo: form.assignedTo,
         status: form.status,
         priority: form.priority,
@@ -691,6 +717,7 @@ const PortalTeamPage = () => {
       title: activity.title,
       description: activity.description || '',
       workDate: toDateInputValue(parseActivityDate(activity.workDate)),
+      endDate: getActivityEndValue(activity),
       assignedTo: getUserId(activity.assignedTo),
       status: activity.status,
       priority: activity.priority,
@@ -853,7 +880,7 @@ const PortalTeamPage = () => {
   const handleSelectDate = (date) => {
     const value = toDateInputValue(date);
     setSelectedDate(value);
-    setForm((current) => ({ ...current, workDate: value }));
+    if (!editingId) setForm((current) => ({ ...current, workDate: value, endDate: value }));
   };
 
   const renderActivityComments = (activity) => {
@@ -1363,7 +1390,7 @@ const PortalTeamPage = () => {
                     animate={{ scaleX: 1, opacity: 1 }}
                     transition={{ duration: 0.28, ease: 'easeOut' }}
                   />
-                  <span>Este sera tu color para vacaciones y actividad.</span>
+                  <span>Este sera tu color para vacaciones y actividad. Las vacaciones cuentan todos los dias naturales.</span>
                 </div>
               </div>
             </motion.aside>
@@ -1662,7 +1689,7 @@ const PortalTeamPage = () => {
                           {editingId ? 'Actualizar actividad' : 'Que estas haciendo'}
                         </h2>
                         <p className="mt-1 text-sm text-[#ff5a1f]">
-                          Guarda tu foco del dia para que el equipo lo vea al momento.
+                          Planifica una tarea para uno o varios dias y compartela con el equipo.
                         </p>
                       </div>
                     </div>
@@ -1704,11 +1731,30 @@ const PortalTeamPage = () => {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block">
-                    <span className="text-sm font-bold">Dia</span>
+                    <span className="text-sm font-bold">Inicio</span>
                     <input
                       type="date"
                       value={form.workDate}
-                      onChange={(event) => setForm({ ...form, workDate: event.target.value })}
+                      min={editingId ? undefined : minWorkDate}
+                      onChange={(event) => {
+                        const workDate = event.target.value;
+                        setForm((current) => ({
+                          ...current,
+                          workDate,
+                          endDate: !current.endDate || current.endDate < workDate ? workDate : current.endDate,
+                        }));
+                      }}
+                      className="mt-2 w-full rounded-2xl border border-orange-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-bold">Fin</span>
+                    <input
+                      type="date"
+                      min={form.workDate || minWorkDate}
+                      value={form.endDate}
+                      onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))}
                       className="mt-2 w-full rounded-2xl border border-orange-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#ff5a1f] focus:ring-4 focus:ring-orange-100"
                     />
                   </label>
@@ -1989,26 +2035,33 @@ const PortalTeamPage = () => {
                           })}
                         </div>
                       )}
-                      <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">
-                        {dayActivities.slice(0, 4).map((activity) => {
+                      <div className="pointer-events-none absolute bottom-2 left-0 right-0 space-y-1">
+                        {dayActivities.slice(0, 3).map((activity) => {
                           const personLabel = getUserLabel(activity.assignedTo || activity.createdBy || currentUser);
                           const markerColor = getPersonColorForUser(
                             activity.assignedTo || activity.createdBy || currentUser
                           );
+                          const starts = startsActivitySegment(value, activity, date);
+                          const ends = endsActivitySegment(value, activity, date);
 
                           return (
                             <motion.span
                               key={activity.id}
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-black text-white shadow-sm"
+                              initial={{ opacity: 0, scaleX: 0.9 }}
+                              animate={{ opacity: 1, scaleX: 1 }}
+                              className={`block h-5 truncate px-2 text-[10px] font-black leading-5 text-white shadow-sm ${
+                                starts ? 'ml-2 rounded-l-full' : ''
+                              } ${ends ? 'mr-2 rounded-r-full' : ''}`}
                               style={{ backgroundColor: markerColor }}
                               title={`${personLabel} - ${activity.title}`}
                             >
-                              {getInitials(personLabel)}
+                              {starts ? activity.title : ''}
                             </motion.span>
                           );
                         })}
+                        {dayActivities.length > 3 && (
+                          <span className="ml-2 text-[9px] font-black text-[#ff5a1f]">+{dayActivities.length - 3}</span>
+                        )}
                       </div>
                     </motion.button>
                   );
