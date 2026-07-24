@@ -479,6 +479,15 @@ const PortalTeamPage = () => {
     return vacations.filter((vacation) => getUserFilterId(vacation.user) === personFilter);
   }, [isPersonFiltered, personFilter, vacations]);
 
+  const vacationLaneByUser = useMemo(() => {
+    const lanes = new Map();
+    visibleVacations.forEach((vacation) => {
+      const userKey = getUserFilterId(vacation.user);
+      if (userKey && !lanes.has(userKey)) lanes.set(userKey, lanes.size);
+    });
+    return lanes;
+  }, [visibleVacations]);
+
   const visibleTrips = useMemo(() => {
     if (!isPersonFiltered) return trips;
     return trips.filter((trip) => getUserFilterId(trip.assignedTo) === personFilter);
@@ -1960,6 +1969,36 @@ const PortalTeamPage = () => {
                   const dayTrips = tripsByDate[value] || [];
                   const holiday = holidaysByDate[value];
                   const isSelected = value === selectedDate;
+                  const visibleDayVacations = dayVacations
+                    .map((vacation) => ({
+                      vacation,
+                      lane: vacationLaneByUser.get(getUserFilterId(vacation.user)) ?? 0,
+                    }))
+                    .filter(({ lane }) => lane < 2)
+                    .sort((first, second) => first.lane - second.lane);
+                  const occupiedVacationLanes = new Set(visibleDayVacations.map(({ lane }) => lane));
+                  const activityByFreeLane = new Map();
+                  const dottedActivities = [];
+                  dayActivities.forEach((activity) => {
+                    const activityUser = activity.assignedTo || activity.createdBy || currentUser;
+                    const lane = vacationLaneByUser.get(getUserFilterId(activityUser));
+                    if (
+                      dayVacations.length > 0 &&
+                      lane !== undefined &&
+                      lane < 2 &&
+                      !occupiedVacationLanes.has(lane) &&
+                      !activityByFreeLane.has(lane)
+                    ) {
+                      activityByFreeLane.set(lane, activity);
+                    } else {
+                      dottedActivities.push(activity);
+                    }
+                  });
+                  const activityItems = dottedActivities.map((activity) => ({
+                      id: activity.id,
+                      color: getPersonColorForUser(activity.assignedTo || activity.createdBy || currentUser),
+                      label: activity.title,
+                    }));
 
                   return (
                     <motion.button
@@ -1978,7 +2017,7 @@ const PortalTeamPage = () => {
                           : holiday && isCurrentMonth
                             ? 'border-violet-200 bg-violet-50/70 hover:border-violet-300 hover:bg-violet-50'
                             : 'border-orange-100 bg-white hover:border-orange-300 hover:bg-orange-50/60'
-                      } ${isTaskFormOpen ? 'min-h-24' : 'min-h-28'} ${!isCurrentMonth ? 'opacity-45' : ''}`}
+                      } min-h-32 ${!isCurrentMonth ? 'opacity-45' : ''}`}
                     >
                       <span className="absolute left-3 top-3 text-sm font-black">{date.getDate()}</span>
                       {holiday && isCurrentMonth && (
@@ -1992,11 +2031,6 @@ const PortalTeamPage = () => {
                           <span className="truncate">{holiday.name}</span>
                         </motion.span>
                       )}
-                      {dayActivities.length > 0 && (
-                        <span className="absolute right-2 top-2 rounded-full border border-orange-100 bg-white px-2 py-0.5 text-[10px] font-black text-[#ff5a1f] shadow-sm">
-                          {dayActivities.length}
-                        </span>
-                      )}
                       {dayTrips.length > 0 && (
                         <span
                           className="absolute right-2 top-9 inline-flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-black text-sky-700 shadow-sm"
@@ -2009,11 +2043,11 @@ const PortalTeamPage = () => {
                       )}
                       {dayVacations.length > 0 && (
                         <div
-                          className={`pointer-events-none absolute left-0 right-0 space-y-1 ${
-                            holiday && isCurrentMonth ? 'top-16' : 'top-10'
+                          className={`pointer-events-none absolute left-0 right-0 h-11 ${
+                            (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-16' : 'top-10'
                           }`}
                         >
-                          {dayVacations.slice(0, 2).map((vacation) => {
+                          {visibleDayVacations.map(({ vacation, lane }) => {
                             const vacationKey = vacation.id || vacation._id;
                             const vacationUserLabel = getUserLabel(vacation.user);
                             const vacationColor = getPersonColorForUser(vacation.user);
@@ -2023,20 +2057,51 @@ const PortalTeamPage = () => {
                             return (
                               <span
                                 key={vacationKey}
-                                className={`block h-5 px-2 text-[10px] font-black leading-5 text-white shadow-sm ${
+                                className={`absolute left-0 right-0 block h-5 truncate px-2 text-[10px] font-black leading-5 text-white shadow-sm ${
                                   starts ? 'ml-2 rounded-l-full' : ''
                                 } ${ends ? 'mr-2 rounded-r-full' : ''}`}
-                                style={{ backgroundColor: vacationColor }}
+                                style={{ backgroundColor: vacationColor, top: `${lane * 24}px` }}
                                 title={`${vacationUserLabel} de vacaciones`}
                               >
-                                {starts ? 'Vacaciones' : ''}
+                                Vacaciones
                               </span>
                             );
                           })}
                         </div>
                       )}
-                      <div className="pointer-events-none absolute bottom-2 left-0 right-0 space-y-1">
-                        {dayActivities.slice(0, 3).map((activity) => {
+                      {dayVacations.length > 0 && activityByFreeLane.size > 0 && (
+                        <div
+                          className={`pointer-events-none absolute left-0 right-0 h-11 ${
+                            (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-16' : 'top-10'
+                          }`}
+                        >
+                          {[...activityByFreeLane.entries()].map(([lane, activity]) => {
+                            const personLabel = getUserLabel(activity.assignedTo || activity.createdBy || currentUser);
+                            const markerColor = getPersonColorForUser(activity.assignedTo || activity.createdBy || currentUser);
+                            const starts = startsActivitySegment(value, activity, date);
+                            const ends = endsActivitySegment(value, activity, date);
+                            return (
+                              <span
+                                key={activity.id}
+                                className={`absolute left-0 right-0 block h-5 truncate px-2 text-[10px] font-black leading-5 text-white shadow-sm ${
+                                  starts ? 'ml-2 rounded-l-full' : ''
+                                } ${ends ? 'mr-2 rounded-r-full' : ''}`}
+                                style={{ backgroundColor: markerColor, top: `${lane * 24}px` }}
+                                title={`${personLabel} - ${activity.title}`}
+                              >
+                                {starts ? activity.title : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {dayActivities.length > 0 && dayVacations.length === 0 && (
+                      <div
+                        className={`pointer-events-none absolute left-0 right-0 space-y-1 ${
+                          (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-16' : 'top-10'
+                        }`}
+                      >
+                        {dayActivities.slice(0, 2).map((activity) => {
                           const personLabel = getUserLabel(activity.assignedTo || activity.createdBy || currentUser);
                           const markerColor = getPersonColorForUser(
                             activity.assignedTo || activity.createdBy || currentUser
@@ -2059,10 +2124,30 @@ const PortalTeamPage = () => {
                             </motion.span>
                           );
                         })}
-                        {dayActivities.length > 3 && (
-                          <span className="ml-2 text-[9px] font-black text-[#ff5a1f]">+{dayActivities.length - 3}</span>
-                        )}
                       </div>
+                      )}
+                      {dottedActivities.length > 0 && dayVacations.length > 0 && (
+                        <div
+                          className="pointer-events-none absolute bottom-2 left-2 right-2 flex h-6 items-center gap-1.5 px-1"
+                          title={activityItems.map((item) => item.label).join(', ')}
+                        >
+                          <span className="flex min-w-0 items-center gap-1">
+                            {activityItems.slice(0, 4).map((item) => (
+                              <span
+                                key={`${item.id}-${item.label}`}
+                                className="h-3 w-3 rounded-full border-2 border-white shadow-sm ring-1 ring-orange-100"
+                                style={{ backgroundColor: item.color }}
+                              />
+                            ))}
+                          </span>
+                          {dottedActivities.length > 4 && <span className="text-[9px] font-black text-[#9b3f22]">+{dottedActivities.length - 4}</span>}
+                        </div>
+                      )}
+                      {dayVacations.length === 0 && dayActivities.length > 2 && (
+                        <span className="absolute right-2 top-2 rounded-full border border-orange-100 bg-white px-2 py-0.5 text-[9px] font-black text-[#ff5a1f] shadow-sm">
+                          +{dayActivities.length - 2}
+                        </span>
+                      )}
                     </motion.button>
                   );
                 })}
