@@ -206,6 +206,28 @@ const PortalSidebar = ({ children }) => {
               )}
             </AnimatePresence>
           </button>
+
+          <AnimatePresence initial={false}>
+            {isOpen && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="border-t border-orange-100 pt-3 text-center text-[11px] text-orange-700/70"
+              >
+                Desarrollado por{' '}
+                <a
+                  href="https://evenor-tech.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-orange-600 transition-colors hover:text-orange-700"
+                >
+                  Evenor-Tech
+                </a>
+              </motion.p>
+            )}
+          </AnimatePresence>
         </div>
       </motion.aside>
 
@@ -227,7 +249,7 @@ const PortalSidebar = ({ children }) => {
               initial={{ x: -280 }}
               animate={{ x: 0 }}
               transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-              className="h-full w-72 bg-white p-4 shadow-2xl"
+              className="flex h-full w-72 flex-col bg-white p-4 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-6 flex items-center justify-between">
@@ -243,7 +265,7 @@ const PortalSidebar = ({ children }) => {
                   <X size={18} strokeWidth={2.2} />
                 </button>
               </div>
-              <nav className="space-y-2">
+              <nav className="flex-1 space-y-2 overflow-y-auto">
                 {navigationItems.map((item) => {
                   const Icon = item.icon;
 
@@ -269,6 +291,17 @@ const PortalSidebar = ({ children }) => {
                   );
                 })}
               </nav>
+              <p className="mt-4 border-t border-orange-100 pt-4 text-center text-[11px] text-orange-700/70">
+                Desarrollado por{' '}
+                <a
+                  href="https://evenor-tech.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-orange-600"
+                >
+                  Evenor-Tech
+                </a>
+              </p>
             </motion.aside>
           </div>
         )}
