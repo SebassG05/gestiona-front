@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LoginPage from '../features/auth/components/LoginPage.jsx';
 import CreateProposalPage from '../features/dashboard/components/CreateProposalPage.jsx';
@@ -6,7 +7,6 @@ import DashboardPage from '../features/dashboard/components/DashboardPage.jsx';
 import JoinPortalPage from '../features/dashboard/components/JoinPortalPage.jsx';
 import MyPortalsPage from '../features/dashboard/components/MyPortalsPage.jsx';
 import PortalOpportunitiesPage from '../features/dashboard/components/PortalOpportunitiesPage.jsx';
-import PortalProjectsPage from '../features/dashboard/components/PortalProjectsPage.jsx';
 import PortalSettingsPage from '../features/dashboard/components/PortalSettingsPage.jsx';
 import PortalTeamPage from '../features/dashboard/components/PortalTeamPage.jsx';
 import PortalBusinessTripsPage from '../features/dashboard/components/PortalBusinessTripsPage.jsx';
@@ -19,6 +19,22 @@ import LegalPage from '../features/legal/components/LegalPage.jsx';
 import { hasValidSession } from '../utils/session.js';
 import PublicHomePage from '../features/public/components/PublicHomePage.jsx';
 import SeoManager from '../features/public/components/SeoManager.jsx';
+
+const PortalAnalyticsPage = lazy(
+  () => import('../features/dashboard/components/PortalAnalyticsPage.jsx')
+);
+
+const AnalyticsRoute = () => (
+  <Suspense
+    fallback={
+      <div className="grid min-h-screen place-items-center bg-[#fafafa] text-sm font-bold text-[#ff5a1f]">
+        Cargando análisis...
+      </div>
+    }
+  >
+    <PortalAnalyticsPage />
+  </Suspense>
+);
 
 const hasSession = () => hasValidSession();
 
@@ -105,7 +121,15 @@ const AppRouter = () => {
           path="/dashboard/portal/:portalId/projects"
           element={
             <ProtectedRoute>
-              <PortalProjectsPage />
+              <AnalyticsRoute />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/analytics"
+          element={
+            <ProtectedRoute>
+              <AnalyticsRoute />
             </ProtectedRoute>
           }
         />

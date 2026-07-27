@@ -9,7 +9,6 @@ import {
   ContactRound,
   FileText,
   FilePenLine,
-  FolderKanban,
   Home,
   LogOut,
   Menu,
@@ -17,6 +16,7 @@ import {
   SquareChartGantt,
   Users,
   ClipboardCheck,
+  ChartNoAxesCombined,
 } from 'lucide-react';
 import { clearAuthSession } from '../../../utils/session.js';
 
@@ -33,7 +33,7 @@ const LOGO_URL =
 
 const navigationItems = [
   { label: 'Inicio', icon: Home, path: '' },
-  { label: 'Proyectos', icon: FolderKanban, path: 'projects' },
+  { label: 'Análisis', icon: ChartNoAxesCombined, path: 'analytics' },
   { label: 'Propuestas', icon: FilePenLine, path: 'proposals' },
   { label: 'Gestión de propuestas', icon: ClipboardCheck, path: 'proposal-management' },
   { label: 'Oportunidades', icon: BriefcaseBusiness, path: 'opportunities' },
