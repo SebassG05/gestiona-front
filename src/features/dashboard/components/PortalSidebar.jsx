@@ -16,7 +16,6 @@ import {
   Settings,
   SquareChartGantt,
   Users,
-  X,
   ClipboardCheck,
 } from 'lucide-react';
 import { clearAuthSession } from '../../../utils/session.js';
@@ -233,37 +232,43 @@ const PortalSidebar = ({ children }) => {
 
       <div className="lg:hidden">
         <div className="fixed left-4 top-4 z-50">
-          <button
+          <motion.button
             type="button"
             onClick={() => setIsMobileOpen((value) => !value)}
+            whileTap={{ scale: 0.92 }}
+            animate={{ rotate: isMobileOpen ? 90 : 0 }}
+            transition={{ type: 'spring', stiffness: 360, damping: 24 }}
             className="grid h-11 w-11 cursor-pointer place-items-center rounded-xl bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg"
-            aria-label="Abrir menu"
+            aria-label={isMobileOpen ? 'Cerrar menu' : 'Abrir menu'}
+            aria-expanded={isMobileOpen}
           >
             <Menu size={20} strokeWidth={2.2} />
-          </button>
+          </motion.button>
         </div>
 
-        {isMobileOpen && (
-          <div className="fixed inset-0 z-40 bg-orange-950/35 backdrop-blur-sm" onClick={() => setIsMobileOpen(false)}>
-            <motion.aside
-              initial={{ x: -280 }}
-              animate={{ x: 0 }}
-              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-              className="flex h-full w-72 flex-col bg-white p-4 shadow-2xl"
-              onClick={(event) => event.stopPropagation()}
+        <AnimatePresence initial={false}>
+          {isMobileOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+              className="fixed inset-0 z-40 bg-orange-950/35 backdrop-blur-sm"
+              onClick={() => setIsMobileOpen(false)}
             >
-              <div className="mb-6 flex items-center justify-between">
+              <motion.aside
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', stiffness: 280, damping: 30, mass: 0.9 }}
+                className="flex h-full w-72 flex-col bg-white p-4 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+              <div className="mb-6 flex min-h-11 items-center pl-14">
                 <div className="flex items-center gap-3">
                   <img src={LOGO_URL} alt="Gestiona-2" className="h-10 w-10 object-contain" />
                   <span className="text-lg font-semibold text-orange-950">Gestiona-2</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsMobileOpen(false)}
-                  className="grid h-9 w-9 cursor-pointer place-items-center rounded-xl bg-orange-50 text-orange-500"
-                >
-                  <X size={18} strokeWidth={2.2} />
-                </button>
               </div>
               <nav className="flex-1 space-y-2 overflow-y-auto">
                 {navigationItems.map((item) => {
@@ -302,9 +307,10 @@ const PortalSidebar = ({ children }) => {
                   Evenor-Tech
                 </a>
               </p>
-            </motion.aside>
-          </div>
-        )}
+              </motion.aside>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div
