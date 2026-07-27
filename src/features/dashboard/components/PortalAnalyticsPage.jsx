@@ -827,7 +827,7 @@ const PortalAnalyticsPage = () => {
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-orange-500" size={15} />
                 </label>
                 <button type="button" onClick={() => setReloadKey((value) => value + 1)} className="grid h-10 w-10 place-items-center rounded-lg border border-orange-200 bg-white text-orange-600 hover:bg-orange-50" title="Actualizar"><RefreshCw size={16} /></button>
-                <button type="button" onClick={() => setIsEditing((value) => !value)} className={`inline-flex h-10 items-center gap-2 rounded-lg px-4 text-xs font-black transition ${isEditing ? 'bg-emerald-500 text-white' : 'bg-gradient-to-r from-[#ff5a1f] to-[#ff3048] text-white'}`}>
+                <button type="button" onClick={() => setIsEditing((value) => !value)} className={`inline-flex h-10 items-center gap-2 rounded-lg px-4 text-xs font-black text-white shadow-sm transition hover:-translate-y-0.5 ${isEditing ? 'bg-[#4b1406] hover:bg-[#6b220d]' : 'bg-gradient-to-r from-[#ff5a1f] to-[#ff3048]'}`}>
                   {isEditing ? <Check size={16} /> : <Settings2 size={16} />}{isEditing ? 'Terminar' : 'Personalizar'}
                 </button>
               </div>
