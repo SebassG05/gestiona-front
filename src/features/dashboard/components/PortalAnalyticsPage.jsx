@@ -802,7 +802,7 @@ const PortalAnalyticsPage = () => {
 
   return (
     <PortalSidebar>
-      <main className="min-h-screen bg-[#f8f8f8] px-3 py-5 text-[#3b1208] md:px-7 md:py-7">
+      <main className="min-h-screen bg-[#f8f8f8] px-3 py-5 text-[#3b1208] [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed [&_select]:cursor-pointer md:px-7 md:py-7">
         <div className="mx-auto max-w-[1680px]">
           <header className="rounded-2xl border border-orange-100 bg-white px-4 py-5 shadow-sm md:px-6">
             <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
@@ -874,7 +874,7 @@ const PortalAnalyticsPage = () => {
 
       <AnimatePresence>
         {isCatalogOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] grid place-items-center bg-orange-950/35 p-4 backdrop-blur-sm" onClick={() => setIsCatalogOpen(false)}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] grid place-items-center bg-orange-950/35 p-4 backdrop-blur-sm [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed [&_select]:cursor-pointer" onClick={() => setIsCatalogOpen(false)}>
             <motion.section initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.98 }} className="flex max-h-[92vh] w-full max-w-[1400px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
               <header className="z-10 flex shrink-0 items-center justify-between border-b border-orange-100 bg-white px-5 py-4">
                 <div><h2 className="text-xl font-black">Diseñar una gráfica</h2><p className="mt-1 text-xs text-[#bd5a39]">Selecciona campos, define el cálculo y revisa el resultado antes de añadirlo.</p></div>
