@@ -1114,7 +1114,7 @@ const PortalProposalsPage = () => {
                     style={{ fontFamily: "'AlfaSlabOne', serif" }}
                     className="mt-3 text-3xl leading-tight text-orange-950 sm:text-4xl"
                   >
-                    Gestión de propuestas
+                    Biblioteca de propuestas
                   </h1>
                   <p className="mt-3 max-w-3xl text-sm leading-6 text-black-500 sm:text-base">
                     Centraliza, organiza y da seguimiento a las propuestas activas de tu organizacion en una vista tipo

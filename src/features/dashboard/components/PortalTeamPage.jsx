@@ -1024,7 +1024,7 @@ const PortalTeamPage = () => {
 
   return (
     <PortalSidebar>
-      <div className="relative min-h-screen overflow-hidden bg-[#fafafa] px-6 py-8 text-[#3b1208] md:px-10">
+      <div className="relative min-h-screen overflow-hidden bg-[#fafafa] px-3 py-5 text-[#3b1208] md:px-10 md:py-8">
         <motion.svg
           className="pointer-events-none absolute inset-0 z-0 h-full w-full select-none"
           viewBox="0 0 1440 900"
@@ -1062,13 +1062,13 @@ const PortalTeamPage = () => {
           onAnimationComplete={() => {
             if (isLeavingForTrips) navigate(`/dashboard/portal/${portalId}/team/trips`);
           }}
-          className="relative z-10 mx-auto max-w-7xl space-y-6"
+          className="relative z-10 mx-auto max-w-7xl space-y-4 md:space-y-6"
         >
-          <section className="rounded-[24px] border border-orange-100 bg-white/90 p-7 shadow-sm">
+          <section className="rounded-[20px] border border-orange-100 bg-white/90 p-5 shadow-sm md:rounded-[24px] md:p-7">
             <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">Equipo</p>
             <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h1 className="font-display text-4xl text-[#4b1406] md:text-5xl">
+                <h1 className="font-display text-3xl text-[#4b1406] md:text-5xl">
                   Actividad del equipo
                 </h1>
                 <p className="mt-3 max-w-3xl text-base leading-7 text-[#ff5a1f]">
@@ -1088,8 +1088,8 @@ const PortalTeamPage = () => {
                   Agregar viaje de empresa
                 </motion.button>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="flex h-28 w-28 shrink-0 flex-col items-center justify-center rounded-2xl border border-orange-100 bg-[#fff8f1] p-4 text-center shadow-sm">
+              <div className="grid w-full grid-cols-3 gap-2 md:w-auto md:gap-3">
+                <div className="flex h-24 min-w-0 flex-col items-center justify-center rounded-2xl border border-orange-100 bg-[#fff8f1] px-2 text-center shadow-sm md:h-28 md:w-28 md:shrink-0 md:p-4">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#ff5a1f] shadow-sm">
                     <Clock3 size={16} />
                   </span>
@@ -1100,7 +1100,7 @@ const PortalTeamPage = () => {
                     </p>
                   </div>
                 </div>
-                <div className="flex h-28 w-28 shrink-0 flex-col items-center justify-center rounded-2xl border border-orange-100 bg-[#fff8f1] p-4 text-center shadow-sm">
+                <div className="flex h-24 min-w-0 flex-col items-center justify-center rounded-2xl border border-orange-100 bg-[#fff8f1] px-2 text-center shadow-sm md:h-28 md:w-28 md:shrink-0 md:p-4">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#ff5a1f] shadow-sm">
                     <Users size={16} />
                   </span>
@@ -1111,7 +1111,7 @@ const PortalTeamPage = () => {
                     </p>
                   </div>
                 </div>
-                <div className="flex h-28 w-28 shrink-0 flex-col items-center justify-center rounded-2xl border border-orange-100 bg-[#fff8f1] p-4 text-center shadow-sm">
+                <div className="flex h-24 min-w-0 flex-col items-center justify-center rounded-2xl border border-orange-100 bg-[#fff8f1] px-2 text-center shadow-sm md:h-28 md:w-28 md:shrink-0 md:p-4">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#ff5a1f] shadow-sm">
                     <CheckCircle2 size={16} />
                   </span>
@@ -1141,7 +1141,7 @@ const PortalTeamPage = () => {
               layout
               className="overflow-hidden rounded-[26px] border border-orange-100 bg-white/95 shadow-sm"
             >
-              <div className="flex flex-wrap items-start justify-between gap-4 p-6 pb-4">
+              <div className="flex flex-wrap items-start justify-between gap-4 p-4 pb-3 md:p-6 md:pb-4">
                 <div className="flex items-start gap-4">
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
                     <Umbrella size={22} />
@@ -1169,7 +1169,7 @@ const PortalTeamPage = () => {
                 </motion.span>
               </div>
 
-              <div className="px-6">
+              <div className="px-4 md:px-6">
                 <div className="grid items-stretch gap-4 md:grid-cols-[1fr_auto_1fr]">
                   <label className="group block rounded-3xl border border-orange-100 bg-[#fffaf5] p-4 transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-sm">
                     <span className="flex items-center justify-between gap-3 text-sm font-black text-[#3b1208]">
@@ -1263,14 +1263,14 @@ const PortalTeamPage = () => {
                     animate={{ opacity: 1, height: 'auto', y: 0 }}
                     exit={{ opacity: 0, height: 0, y: -6 }}
                     transition={{ duration: 0.22, ease: 'easeOut' }}
-                    className="mx-6 mt-4 overflow-hidden rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600"
+                    className="mx-4 mt-4 overflow-hidden rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 md:mx-6"
                   >
                     {vacationError}
                   </motion.p>
                 )}
               </AnimatePresence>
 
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-orange-100 bg-[#fffaf5] px-6 py-5">
+              <div className="mt-5 flex flex-col items-stretch gap-4 border-t border-orange-100 bg-[#fffaf5] px-4 py-5 md:flex-row md:flex-wrap md:items-center md:justify-between md:px-6">
                 <div className="flex flex-wrap gap-2">
                   <AnimatePresence initial={false}>
                     {currentUserVacations.length === 0 ? (
@@ -1315,7 +1315,7 @@ const PortalTeamPage = () => {
                 <button
                   type="submit"
                   disabled={isVacationSaving}
-                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5a1f] to-[#ff3048] px-6 py-3 text-sm font-black text-white shadow-lg shadow-orange-200 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5a1f] to-[#ff3048] px-6 py-3 text-sm font-black text-white shadow-lg shadow-orange-200 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 md:w-auto"
                 >
                   {isVacationSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
                   Guardar vacaciones
@@ -1409,7 +1409,7 @@ const PortalTeamPage = () => {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: 'easeOut', delay: 0.08 }}
-            className="rounded-[26px] border border-orange-100 bg-white/95 p-5 shadow-sm"
+            className="rounded-[20px] border border-orange-100 bg-white/95 p-4 shadow-sm md:rounded-[26px] md:p-5"
           >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-start gap-4">
@@ -1506,18 +1506,18 @@ const PortalTeamPage = () => {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: 'easeOut', delay: 0.1 }}
-            className="overflow-hidden rounded-[26px] border border-orange-100 bg-white/95 shadow-sm"
+            className="min-w-0 max-w-full overflow-hidden rounded-[20px] border border-orange-100 bg-white/95 shadow-sm md:rounded-[26px]"
           >
-            <div className="flex flex-col gap-4 border-b border-orange-100 p-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex items-start gap-4">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+            <div className="flex flex-col gap-4 border-b border-orange-100 p-4 md:p-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex min-w-0 items-start gap-3 md:gap-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff3e7] text-[#ff5a1f] md:h-12 md:w-12 md:rounded-2xl">
                   <CalendarDays size={21} />
                 </span>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">
                     Resumen semanal
                   </p>
-                  <h2 className="mt-1 text-2xl font-black text-[#3b1208]">
+                  <h2 className="mt-1 text-xl font-black text-[#3b1208] md:text-2xl">
                     Semana {weeklySummary.rangeLabel}
                   </h2>
                   <p className="mt-1 text-sm text-[#ff5a1f]">
@@ -1536,14 +1536,14 @@ const PortalTeamPage = () => {
               </motion.span>
             </div>
 
-            <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(220px,0.72fr)_minmax(260px,0.88fr)]">
-              <div className="rounded-3xl border border-orange-100 bg-[#fffaf5] p-4">
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-[#ff5a1f] shadow-sm">
+            <div className="grid min-w-0 gap-3 p-3 min-[420px]:p-4 md:gap-4 md:p-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(220px,0.72fr)_minmax(260px,0.88fr)]">
+              <div className="min-w-0 rounded-2xl border border-orange-100 bg-[#fffaf5] p-3 md:rounded-3xl md:p-4">
+                <div className="mb-3 flex min-w-0 items-center gap-3 md:mb-4">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#ff5a1f] shadow-sm md:h-10 md:w-10 md:rounded-2xl">
                     <Users size={18} />
                   </span>
-                  <div>
-                    <h3 className="text-lg font-black text-[#3b1208]">Que hace cada persona</h3>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-black text-[#3b1208] md:text-lg">Que hace cada persona</h3>
                     <p className="text-xs font-semibold text-[#ff5a1f]">Actividad principal registrada.</p>
                   </div>
                 </div>
@@ -1556,10 +1556,10 @@ const PortalTeamPage = () => {
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.22, ease: 'easeOut' }}
-                        className="flex items-center gap-3 rounded-2xl border border-orange-100 bg-white p-3 shadow-sm"
+                        className="flex min-w-0 items-center gap-2.5 rounded-xl border border-orange-100 bg-white p-2.5 shadow-sm md:gap-3 md:rounded-2xl md:p-3"
                       >
                         <span
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-black text-white shadow-sm"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white shadow-sm md:h-10 md:w-10 md:text-xs"
                           style={{ backgroundColor: person.color }}
                         >
                           {person.initials}
@@ -1594,26 +1594,26 @@ const PortalTeamPage = () => {
                 )}
               </div>
 
-              <div className="rounded-3xl border border-orange-100 bg-white p-4">
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+              <div className="min-w-0 rounded-2xl border border-orange-100 bg-white p-3 md:rounded-3xl md:p-4">
+                <div className="mb-3 flex min-w-0 items-center gap-3 md:mb-4">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#fff3e7] text-[#ff5a1f] md:h-10 md:w-10 md:rounded-2xl">
                     <Clock3 size={18} />
                   </span>
-                  <div>
-                    <h3 className="text-lg font-black text-[#3b1208]">Mas carga</h3>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-black text-[#3b1208] md:text-lg">Mas carga</h3>
                     <p className="text-xs font-semibold text-[#ff5a1f]">Mayor volumen semanal.</p>
                   </div>
                 </div>
 
                 {weeklySummary.busiest ? (
-                  <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 p-4">
+                  <div className="min-w-0 rounded-xl border border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 p-3 md:rounded-2xl md:p-4">
                     <span
-                      className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-black text-white shadow-sm"
+                      className="flex h-10 w-10 items-center justify-center rounded-full text-xs font-black text-white shadow-sm md:h-12 md:w-12 md:text-sm"
                       style={{ backgroundColor: weeklySummary.busiest.color }}
                     >
                       {weeklySummary.busiest.initials}
                     </span>
-                    <p className="mt-3 font-black text-[#3b1208]">{weeklySummary.busiest.label}</p>
+                    <p className="mt-3 break-words font-black text-[#3b1208]">{weeklySummary.busiest.label}</p>
                     <p className="mt-1 text-sm font-semibold text-[#ff5a1f]">
                       {weeklySummary.busiest.totalCount} actividades esta semana.
                     </p>
@@ -1625,13 +1625,13 @@ const PortalTeamPage = () => {
                 )}
               </div>
 
-              <div className="rounded-3xl border border-orange-100 bg-white p-4">
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
+              <div className="min-w-0 rounded-2xl border border-orange-100 bg-white p-3 md:rounded-3xl md:p-4">
+                <div className="mb-3 flex min-w-0 items-center gap-3 md:mb-4">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#fff3e7] text-[#ff5a1f] md:h-10 md:w-10 md:rounded-2xl">
                     <Umbrella size={18} />
                   </span>
-                  <div>
-                    <h3 className="text-lg font-black text-[#3b1208]">Vacaciones</h3>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-black text-[#3b1208] md:text-lg">Vacaciones</h3>
                     <p className="text-xs font-semibold text-[#ff5a1f]">Ausencias de esta semana.</p>
                   </div>
                 </div>
@@ -1644,11 +1644,11 @@ const PortalTeamPage = () => {
                         initial={{ opacity: 0, x: 8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.22, ease: 'easeOut' }}
-                        className="rounded-2xl border border-orange-100 bg-[#fffaf5] p-3"
+                        className="min-w-0 rounded-xl border border-orange-100 bg-[#fffaf5] p-2.5 md:rounded-2xl md:p-3"
                       >
                         <div className="flex items-center gap-2">
                           <span className="h-3 w-3 rounded-full" style={{ backgroundColor: person.color }} />
-                          <p className="font-black text-[#3b1208]">{person.label}</p>
+                          <p className="min-w-0 break-words font-black text-[#3b1208]">{person.label}</p>
                         </div>
                         <p className="mt-1 text-xs font-bold text-[#ff5a1f]">
                           {person.vacations
@@ -1686,7 +1686,7 @@ const PortalTeamPage = () => {
                   animate={{ opacity: 1, x: 0, scale: 1 }}
                   exit={{ opacity: 0, x: -16, scale: 0.98 }}
                   transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                  className="self-start rounded-[24px] border border-orange-100 bg-white/95 p-6 shadow-sm xl:min-h-[632px]"
+                  className="self-start rounded-[20px] border border-orange-100 bg-white/95 p-4 shadow-sm md:rounded-[24px] md:p-6 xl:min-h-[632px]"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-4">
@@ -1878,7 +1878,7 @@ const PortalTeamPage = () => {
                 </div>
               </div>
 
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <div className="mt-6 grid grid-cols-2 gap-3 md:flex md:flex-wrap md:items-center md:justify-between">
                 <button
                   type="button"
                   onClick={resetForm}
@@ -1889,7 +1889,7 @@ const PortalTeamPage = () => {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5a00] to-[#ff3048] px-6 py-3 text-sm font-black text-white shadow-lg shadow-orange-100 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5a00] to-[#ff3048] px-4 py-3 text-sm font-black text-white shadow-lg shadow-orange-100 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 md:px-6"
                 >
                   {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
                   {editingId ? 'Actualizar' : 'Guardar actividad'}
@@ -1900,11 +1900,11 @@ const PortalTeamPage = () => {
             </AnimatePresence>
 
             <section
-              className={`relative self-start overflow-visible rounded-[24px] border border-orange-100 bg-white/95 p-6 shadow-sm ${
+              className={`relative self-start overflow-visible rounded-[20px] border border-orange-100 bg-white/95 p-4 shadow-sm md:rounded-[24px] md:p-6 ${
                 isSelectedPastDate ? '' : 'xl:min-h-[632px]'
               }`}
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-3">
                   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fff3e7] text-[#ff5a1f]">
                     <CalendarDays size={21} />
@@ -1923,7 +1923,7 @@ const PortalTeamPage = () => {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-start">
                   <button
                     type="button"
                     onClick={handleOpenTaskForm}
@@ -1940,7 +1940,7 @@ const PortalTeamPage = () => {
                   >
                     <ChevronLeft size={18} />
                   </button>
-                  <p className="min-w-36 text-center text-sm font-black capitalize">
+                  <p className="min-w-0 flex-1 text-center text-sm font-black capitalize md:min-w-36 md:flex-none">
                     {new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(
                       monthCursor
                     )}
@@ -1955,13 +1955,15 @@ const PortalTeamPage = () => {
                 </div>
               </div>
 
-              <div className="mt-6 grid grid-cols-7 gap-2 text-center text-xs font-black uppercase text-[#ff5a1f]">
-                {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day) => (
-                  <span key={day}>{day}</span>
-                ))}
-              </div>
+              <div className="mt-5 md:mt-6">
+                <div className="min-w-0">
+                  <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase text-[#ff5a1f] md:gap-2 md:text-xs">
+                    {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day) => (
+                      <span key={day}>{day}</span>
+                    ))}
+                  </div>
 
-              <div className="mt-3 grid grid-cols-7 gap-2">
+                  <div className="mt-2 grid grid-cols-7 gap-1 md:mt-3 md:gap-2">
                 {calendarDays.map(({ date, isCurrentMonth }) => {
                   const value = toDateInputValue(date);
                   const dayActivities = activitiesByDate[value] || [];
@@ -2011,40 +2013,40 @@ const PortalTeamPage = () => {
                       title={
                         holiday ? `${holiday.name} - Festivo ${holiday.scope || 'Sevilla'}` : undefined
                       }
-                      className={`relative cursor-pointer overflow-hidden rounded-2xl border p-3 text-left transition ${
+                      className={`relative min-h-[92px] cursor-pointer overflow-hidden rounded-xl border p-1.5 text-left transition md:min-h-32 md:rounded-2xl md:p-3 ${
                         isSelected
                           ? 'border-[#ff5a1f] bg-[#fff3e7] shadow-sm'
                           : holiday && isCurrentMonth
                             ? 'border-violet-200 bg-violet-50/70 hover:border-violet-300 hover:bg-violet-50'
                             : 'border-orange-100 bg-white hover:border-orange-300 hover:bg-orange-50/60'
-                      } min-h-32 ${!isCurrentMonth ? 'opacity-45' : ''}`}
+                      } ${!isCurrentMonth ? 'opacity-45' : ''}`}
                     >
-                      <span className="absolute left-3 top-3 text-sm font-black">{date.getDate()}</span>
+                      <span className="absolute left-2 top-2 text-xs font-black md:left-3 md:top-3 md:text-sm">{date.getDate()}</span>
                       {holiday && isCurrentMonth && (
                         <motion.span
                           initial={{ opacity: 0, y: -4 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="absolute left-3 top-9 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black text-white shadow-sm"
+                          className="absolute left-1.5 top-7 inline-flex max-w-[calc(100%-0.75rem)] items-center gap-1 rounded-full px-1 py-0.5 text-[9px] font-black text-white shadow-sm md:left-3 md:top-9 md:max-w-[calc(100%-1.5rem)] md:px-2 md:text-[10px]"
                           style={{ backgroundColor: HOLIDAY_COLOR }}
                         >
                           <Landmark size={10} />
-                          <span className="truncate">{holiday.name}</span>
+                          <span className="hidden truncate md:inline">{holiday.name}</span>
                         </motion.span>
                       )}
                       {dayTrips.length > 0 && (
                         <span
-                          className="absolute right-2 top-9 inline-flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-black text-sky-700 shadow-sm"
+                          className="absolute right-1.5 top-7 inline-flex max-w-[calc(100%-0.75rem)] items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-1 py-0.5 text-[9px] font-black text-sky-700 shadow-sm md:right-2 md:top-9 md:max-w-[calc(100%-1rem)] md:px-2 md:text-[10px]"
                           title={dayTrips.map((trip) => `${trip.title} - ${trip.destination}`).join(', ')}
                         >
                           <PlaneTakeoff size={10} />
-                          <span className="truncate">{dayTrips[0].destination}</span>
+                          <span className="hidden truncate md:inline">{dayTrips[0].destination}</span>
                           {dayTrips.length > 1 && <span>+{dayTrips.length - 1}</span>}
                         </span>
                       )}
                       {dayVacations.length > 0 && (
                         <div
                           className={`pointer-events-none absolute left-0 right-0 h-11 ${
-                            (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-16' : 'top-10'
+                            (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-12 md:top-16' : 'top-8 md:top-10'
                           }`}
                         >
                           {visibleDayVacations.map(({ vacation, lane }) => {
@@ -2057,13 +2059,13 @@ const PortalTeamPage = () => {
                             return (
                               <span
                                 key={vacationKey}
-                                className={`absolute left-0 right-0 block h-5 truncate px-2 text-[10px] font-black leading-5 text-white shadow-sm ${
+                                className={`absolute left-0 right-0 block h-4 truncate px-0 text-[9px] font-black leading-4 text-white shadow-sm md:h-5 md:px-2 md:text-[10px] md:leading-5 ${
                                   starts ? 'ml-2 rounded-l-full' : ''
                                 } ${ends ? 'mr-2 rounded-r-full' : ''}`}
                                 style={{ backgroundColor: vacationColor, top: `${lane * 24}px` }}
                                 title={`${vacationUserLabel} de vacaciones`}
                               >
-                                Vacaciones
+                                <span className="hidden md:inline">Vacaciones</span>
                               </span>
                             );
                           })}
@@ -2072,7 +2074,7 @@ const PortalTeamPage = () => {
                       {dayVacations.length > 0 && activityByFreeLane.size > 0 && (
                         <div
                           className={`pointer-events-none absolute left-0 right-0 h-11 ${
-                            (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-16' : 'top-10'
+                            (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-12 md:top-16' : 'top-8 md:top-10'
                           }`}
                         >
                           {[...activityByFreeLane.entries()].map(([lane, activity]) => {
@@ -2083,13 +2085,13 @@ const PortalTeamPage = () => {
                             return (
                               <span
                                 key={activity.id}
-                                className={`absolute left-0 right-0 block h-5 truncate px-2 text-[10px] font-black leading-5 text-white shadow-sm ${
+                                className={`absolute left-0 right-0 block h-4 truncate px-0 text-[9px] font-black leading-4 text-white shadow-sm md:h-5 md:px-2 md:text-[10px] md:leading-5 ${
                                   starts ? 'ml-2 rounded-l-full' : ''
                                 } ${ends ? 'mr-2 rounded-r-full' : ''}`}
                                 style={{ backgroundColor: markerColor, top: `${lane * 24}px` }}
                                 title={`${personLabel} - ${activity.title}`}
                               >
-                                {starts ? activity.title : ''}
+                                <span className="hidden md:inline">{starts ? activity.title : ''}</span>
                               </span>
                             );
                           })}
@@ -2098,7 +2100,7 @@ const PortalTeamPage = () => {
                       {dayActivities.length > 0 && dayVacations.length === 0 && (
                       <div
                         className={`pointer-events-none absolute left-0 right-0 space-y-1 ${
-                          (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-16' : 'top-10'
+                          (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-12 md:top-16' : 'top-8 md:top-10'
                         }`}
                       >
                         {dayActivities.slice(0, 2).map((activity) => {
@@ -2114,13 +2116,13 @@ const PortalTeamPage = () => {
                               key={activity.id}
                               initial={{ opacity: 0, scaleX: 0.9 }}
                               animate={{ opacity: 1, scaleX: 1 }}
-                              className={`block h-5 truncate px-2 text-[10px] font-black leading-5 text-white shadow-sm ${
+                              className={`block h-4 truncate px-0 text-[9px] font-black leading-4 text-white shadow-sm md:h-5 md:px-2 md:text-[10px] md:leading-5 ${
                                 starts ? 'ml-2 rounded-l-full' : ''
                               } ${ends ? 'mr-2 rounded-r-full' : ''}`}
                               style={{ backgroundColor: markerColor }}
                               title={`${personLabel} - ${activity.title}`}
                             >
-                              {starts ? activity.title : ''}
+                              <span className="hidden md:inline">{starts ? activity.title : ''}</span>
                             </motion.span>
                           );
                         })}
@@ -2128,14 +2130,14 @@ const PortalTeamPage = () => {
                       )}
                       {dottedActivities.length > 0 && dayVacations.length > 0 && (
                         <div
-                          className="pointer-events-none absolute bottom-2 left-2 right-2 flex h-6 items-center gap-1.5 px-1"
+                          className="pointer-events-none absolute bottom-1 left-1 right-1 flex h-5 items-center gap-1 px-0.5 md:bottom-2 md:left-2 md:right-2 md:h-6 md:gap-1.5 md:px-1"
                           title={activityItems.map((item) => item.label).join(', ')}
                         >
                           <span className="flex min-w-0 items-center gap-1">
                             {activityItems.slice(0, 4).map((item) => (
                               <span
                                 key={`${item.id}-${item.label}`}
-                                className="h-3 w-3 rounded-full border-2 border-white shadow-sm ring-1 ring-orange-100"
+                                className="h-2.5 w-2.5 rounded-full border border-white shadow-sm ring-1 ring-orange-100 md:h-3 md:w-3 md:border-2"
                                 style={{ backgroundColor: item.color }}
                               />
                             ))}
@@ -2144,13 +2146,15 @@ const PortalTeamPage = () => {
                         </div>
                       )}
                       {dayVacations.length === 0 && dayActivities.length > 2 && (
-                        <span className="absolute right-2 top-2 rounded-full border border-orange-100 bg-white px-2 py-0.5 text-[9px] font-black text-[#ff5a1f] shadow-sm">
+                        <span className="absolute right-1 top-1 rounded-full border border-orange-100 bg-white px-1 py-0.5 text-[8px] font-black text-[#ff5a1f] shadow-sm md:right-2 md:top-2 md:px-2 md:text-[9px]">
                           +{dayActivities.length - 2}
                         </span>
                       )}
                     </motion.button>
                   );
                 })}
+                  </div>
+                </div>
               </div>
 
               <AnimatePresence>

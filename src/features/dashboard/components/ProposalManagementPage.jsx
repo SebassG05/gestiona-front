@@ -223,13 +223,13 @@ const ProposalManagementPage = () => {
             <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <p className="flex items-center gap-2 text-sm font-black uppercase text-[#ff3f6c]">
-                  <ClipboardCheck size={17} /> Gestion de propuestas
+                  <ClipboardCheck size={17} /> Seguimiento
                 </p>
                 <h1
                   style={{ fontFamily: "'AlfaSlabOne', serif" }}
                   className="mt-3 text-4xl text-[#4b1406] md:text-5xl"
                 >
-                  Control de calidad
+                  Gestión de propuestas
                 </h1>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-[#bd4b27]">
                   Sigue el avance, asigna acciones y compara la calidad de cada version de la propuesta.
@@ -268,7 +268,7 @@ const ProposalManagementPage = () => {
                 <ClipboardCheck size={38} className="mx-auto text-orange-500" />
                 <h2 className="mt-4 text-2xl font-black">Todavia no hay propuestas</h2>
                 <p className="mt-2 text-sm text-[#bd5a39]">
-                  Crea una propuesta para activar su tabla de control de calidad.
+                  Crea una propuesta para activar su tabla de seguimiento.
                 </p>
               </div>
             </section>
