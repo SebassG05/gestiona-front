@@ -1,6 +1,24 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   BriefcaseBusiness,
   ChevronLeft,
@@ -44,14 +62,151 @@ const navigationItems = [
   { label: 'Ajustes', icon: Settings, path: 'settings' },
 ];
 
+const getNavigationItemId = (item) => item.path || 'home';
+const defaultNavigationOrder = navigationItems.map(getNavigationItemId);
+
+const getStoredUserId = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return user.id || user._id || user.email || 'anonymous';
+  } catch {
+    return 'anonymous';
+  }
+};
+
+const getNavigationStorageKey = (portalId) =>
+  `gestiona2:sidebar-order:${getStoredUserId()}:${portalId || 'portal'}`;
+
+const normalizeNavigationOrder = (storedOrder) => {
+  const validIds = Array.isArray(storedOrder)
+    ? storedOrder.filter((id) => defaultNavigationOrder.includes(id))
+    : [];
+  return [...new Set([...validIds, ...defaultNavigationOrder])];
+};
+
+const loadNavigationOrder = (portalId) => {
+  try {
+    return normalizeNavigationOrder(
+      JSON.parse(localStorage.getItem(getNavigationStorageKey(portalId)) || '[]')
+    );
+  } catch {
+    return defaultNavigationOrder;
+  }
+};
+
+const SortableNavigationItem = ({
+  item,
+  to,
+  isActive,
+  isOpen = true,
+  isMobile = false,
+  onNavigate,
+}) => {
+  const itemId = getNavigationItemId(item);
+  const Icon = item.icon;
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: itemId });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition: isDragging ? 'none' : transition,
+        zIndex: isDragging ? 20 : 'auto',
+        willChange: transform ? 'transform' : 'auto',
+      }}
+      className={`group relative flex h-12 touch-pan-y cursor-grab items-center rounded-xl active:cursor-grabbing ${
+        isActive
+          ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm'
+          : 'text-orange-900 hover:bg-orange-50 hover:text-orange-600'
+      } ${isDragging ? 'opacity-20' : ''}`}
+    >
+      <Link
+        to={to}
+        onClick={onNavigate}
+        className={`flex h-full min-w-0 flex-1 items-center gap-3 rounded-xl text-sm font-semibold transition ${
+          isOpen ? 'px-2' : 'justify-center px-3'
+        }`}
+        title={!isOpen ? item.label : undefined}
+      >
+        <span className="grid h-6 w-6 shrink-0 place-items-center">
+          <Icon size={18} strokeWidth={2.1} />
+        </span>
+        {isOpen && (
+          <motion.span
+            initial={isMobile ? false : { opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="truncate"
+          >
+            {item.label}
+          </motion.span>
+        )}
+      </Link>
+    </div>
+  );
+};
+
+const NavigationDragOverlay = ({ item }) => {
+  if (!item) return null;
+  const Icon = item.icon;
+
+  return (
+    <div className="flex h-12 w-[280px] items-center gap-3 rounded-xl border border-orange-200 bg-white px-4 text-sm font-semibold text-orange-900 shadow-[0_18px_45px_rgba(124,45,18,0.18)] ring-1 ring-orange-100">
+      <span className="grid h-6 w-6 shrink-0 place-items-center text-orange-600">
+        <Icon size={18} strokeWidth={2.1} />
+      </span>
+      <span className="truncate">{item.label}</span>
+    </div>
+  );
+};
+
 const PortalSidebar = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { portalId } = useParams();
   const [isOpen, setIsOpen] = useState(true);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [navigationOrder, setNavigationOrder] = useState(() => loadNavigationOrder(portalId));
+  const [activeNavigationId, setActiveNavigationId] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 140, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const basePath = `/dashboard/portal/${portalId}`;
+  const orderedNavigationItems = useMemo(() => {
+    const itemById = new Map(navigationItems.map((item) => [getNavigationItemId(item), item]));
+    return navigationOrder.map((id) => itemById.get(id)).filter(Boolean);
+  }, [navigationOrder]);
+  const activeNavigationItem = orderedNavigationItems.find(
+    (item) => getNavigationItemId(item) === activeNavigationId
+  );
+
+  const handleNavigationDragEnd = ({ active, over }) => {
+    setActiveNavigationId(null);
+    if (!over || active.id === over.id) return;
+
+    setNavigationOrder((current) => {
+      const oldIndex = current.indexOf(active.id);
+      const newIndex = current.indexOf(over.id);
+      if (oldIndex < 0 || newIndex < 0) return current;
+
+      const nextOrder = arrayMove(current, oldIndex, newIndex);
+      localStorage.setItem(getNavigationStorageKey(portalId), JSON.stringify(nextOrder));
+      return nextOrder;
+    });
+  };
 
   const handleLogout = () => {
     clearAuthSession();
@@ -101,44 +256,43 @@ const PortalSidebar = ({ children }) => {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-2 px-4 py-3">
-          {navigationItems.map((item) => {
-            const to = item.path ? `${basePath}/${item.path}` : basePath;
-            const Icon = item.icon;
-            const isActive = item.path
-              ? location.pathname === to || location.pathname.startsWith(`${to}/`)
-              : location.pathname === basePath || location.pathname === `${basePath}/`;
+        <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={({ active }) => setActiveNavigationId(active.id)}
+            onDragCancel={() => setActiveNavigationId(null)}
+            onDragEnd={handleNavigationDragEnd}
+          >
+            <SortableContext
+              items={navigationOrder}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                {orderedNavigationItems.map((item) => {
+                  const to = item.path ? `${basePath}/${item.path}` : basePath;
+                  const isActive = item.path
+                    ? location.pathname === to || location.pathname.startsWith(`${to}/`)
+                    : location.pathname === basePath || location.pathname === `${basePath}/`;
 
-            return (
-              <Link
-                key={item.label}
-                to={to}
-                className={`flex h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition ${
-                  isActive
-                    ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm'
-                    : 'text-orange-900 hover:bg-orange-50 hover:text-orange-600'
-                } ${isOpen ? 'justify-start' : 'justify-center'}`}
-                title={!isOpen ? item.label : undefined}
-              >
-                <span className="grid h-6 w-6 shrink-0 place-items-center">
-                  <Icon size={18} strokeWidth={2.1} />
-                </span>
-                <AnimatePresence initial={false}>
-                  {isOpen && (
-                    <motion.span
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -8 }}
-                      transition={{ duration: 0.18, ease: 'easeOut' }}
-                      className="truncate"
-                    >
-                      {item.label}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </Link>
-            );
-          })}
+                  return (
+                    <SortableNavigationItem
+                      key={getNavigationItemId(item)}
+                      item={item}
+                      to={to}
+                      isActive={isActive}
+                      isOpen={isOpen}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+            <DragOverlay
+              dropAnimation={{ duration: 220, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}
+            >
+              <NavigationDragOverlay item={activeNavigationItem} />
+            </DragOverlay>
+          </DndContext>
         </nav>
 
         <div className="space-y-3 border-t border-orange-100 p-4">
@@ -270,31 +424,44 @@ const PortalSidebar = ({ children }) => {
                   <span className="text-lg font-semibold text-orange-950">Gestiona-2</span>
                 </div>
               </div>
-              <nav className="flex-1 space-y-2 overflow-y-auto">
-                {navigationItems.map((item) => {
-                  const Icon = item.icon;
+              <nav className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={({ active }) => setActiveNavigationId(active.id)}
+                  onDragCancel={() => setActiveNavigationId(null)}
+                  onDragEnd={handleNavigationDragEnd}
+                >
+                  <SortableContext
+                    items={navigationOrder}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-2">
+                      {orderedNavigationItems.map((item) => {
+                        const to = item.path ? `${basePath}/${item.path}` : basePath;
+                        const isActive = item.path
+                          ? location.pathname === to || location.pathname.startsWith(`${to}/`)
+                          : location.pathname === basePath || location.pathname === `${basePath}/`;
 
-                  return (
-                    <Link
-                      key={item.label}
-                      to={item.path ? `${basePath}/${item.path}` : basePath}
-                      onClick={() => setIsMobileOpen(false)}
-                      className={`flex h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold ${
-                        (item.path
-                          ? location.pathname === (item.path ? `${basePath}/${item.path}` : basePath) ||
-                            location.pathname.startsWith(`${basePath}/${item.path}/`)
-                          : location.pathname === basePath || location.pathname === `${basePath}/`)
-                          ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
-                          : 'text-orange-900'
-                      }`}
-                    >
-                      <span className="grid h-6 w-6 place-items-center">
-                        <Icon size={18} strokeWidth={2.1} />
-                      </span>
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
+                        return (
+                          <SortableNavigationItem
+                            key={getNavigationItemId(item)}
+                            item={item}
+                            to={to}
+                            isActive={isActive}
+                            isMobile
+                            onNavigate={() => setIsMobileOpen(false)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </SortableContext>
+                  <DragOverlay
+                    dropAnimation={{ duration: 220, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}
+                  >
+                    <NavigationDragOverlay item={activeNavigationItem} />
+                  </DragOverlay>
+                </DndContext>
               </nav>
               <p className="mt-4 border-t border-orange-100 pt-4 text-center text-[11px] text-orange-700/70">
                 Desarrollado por{' '}
