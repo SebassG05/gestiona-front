@@ -19,6 +19,7 @@ import { getPortalMembers } from '../services/portalService.js';
 import { getPortalProposals } from '../services/proposalService.js';
 import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
 import { getProposalControl, saveProposalControl } from '../services/proposalControlService.js';
+import { getEffectiveProposalStatus, isProposalOverdue } from '../utils/proposalDeadline.js';
 
 const STATUSES = ['No iniciado', 'En progreso', 'En revision', 'Listo', 'No aplica'];
 const VERSIONS = Array.from({ length: 9 }, (_, index) => index + 1);
@@ -123,6 +124,9 @@ const ProposalManagementPage = () => {
 
   const selectedProposal = proposals.find((proposal) => (proposal._id || proposal.id) === proposalId);
   const orderedProposals = useMemo(() => [...proposals].sort((a, b) => {
+    const overdueOrder = Number(isProposalOverdue(a)) - Number(isProposalOverdue(b));
+    if (overdueOrder) return overdueOrder;
+
     const aId = a._id || a.id;
     const bId = b._id || b.id;
     return Number(favoriteProposalIds.includes(bId)) - Number(favoriteProposalIds.includes(aId));
@@ -240,6 +244,11 @@ const ProposalManagementPage = () => {
                 <button type="button" onClick={() => setIsProposalMenuOpen((open) => !open)} className="mt-2 flex min-h-12 w-full items-center gap-3 rounded-xl border border-orange-200 bg-white px-4 py-3 text-left font-bold outline-none transition hover:border-orange-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100" aria-haspopup="listbox" aria-expanded={isProposalMenuOpen}>
                   {selectedProposal && <Star size={17} className={favoriteProposalIds.includes(proposalId) ? 'shrink-0 text-amber-500' : 'shrink-0 text-orange-200'} fill={favoriteProposalIds.includes(proposalId) ? 'currentColor' : 'none'} />}
                   <span className="min-w-0 flex-1 truncate">{selectedProposal ? `${selectedProposal.acronimo ? `${selectedProposal.acronimo} - ` : ''}${selectedProposal.nombre}` : 'No hay propuestas disponibles'}</span>
+                  {selectedProposal && isProposalOverdue(selectedProposal) && (
+                    <span className="shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-black uppercase text-red-700">
+                      {getEffectiveProposalStatus(selectedProposal)}
+                    </span>
+                  )}
                   <ChevronDown size={18} className={`shrink-0 text-orange-600 transition ${isProposalMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
                 <AnimatePresence>
@@ -248,9 +257,11 @@ const ProposalManagementPage = () => {
                       {orderedProposals.map((proposal) => {
                         const entityId = proposal._id || proposal.id;
                         const favorite = favoriteProposalIds.includes(entityId);
-                        return <motion.div layout="position" transition={{ layout: { duration: 0.48, ease: [0.22, 1, 0.36, 1] } }} key={entityId} className={`flex items-center rounded-lg transition ${proposalId === entityId ? 'bg-orange-50' : 'hover:bg-orange-50/70'}`}>
+                        const overdue = isProposalOverdue(proposal);
+                        return <motion.div layout="position" transition={{ layout: { duration: 0.48, ease: [0.22, 1, 0.36, 1] } }} key={entityId} className={`flex items-center rounded-lg transition ${proposalId === entityId ? 'bg-orange-50' : overdue ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-orange-50/70'}`}>
                           <button type="button" onClick={() => { setProposalId(entityId); setIsProposalMenuOpen(false); }} className="min-w-0 flex-1 px-3 py-2.5 text-left" role="option" aria-selected={proposalId === entityId}>
                             <span className="block truncate text-sm font-bold text-[#4b1406]">{proposal.acronimo ? `${proposal.acronimo} - ` : ''}{proposal.nombre}</span>
+                            {overdue && <span className="mt-0.5 block text-[10px] font-black uppercase text-red-600">Vencida</span>}
                           </button>
                           <motion.button type="button" onClick={() => toggleProposalFavorite(entityId)} whileTap={{ scale: 0.88 }} transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }} className={`mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-amber-50 ${favorite ? 'text-amber-500' : 'text-orange-200 hover:text-amber-500'}`} title={favorite ? 'Quitar de favoritos' : 'Fijar arriba'} aria-label={favorite ? 'Quitar propuesta de favoritos' : 'Marcar propuesta como favorita'}><Star size={18} fill={favorite ? 'currentColor' : 'none'} /></motion.button>
                         </motion.div>;

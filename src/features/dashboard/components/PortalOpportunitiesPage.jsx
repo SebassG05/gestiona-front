@@ -490,6 +490,8 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const workbookCategory = copy.category;
   const isContactsLibrary = workbookCategory === 'contacts';
   const excelInputRef = useRef(null);
+  const tableScrollerRef = useRef(null);
+  const tableDragRef = useRef({ startX: 0, scrollLeft: 0 });
   const [workbooks, setWorkbooks] = useState([]);
   const [activeWorkbookId, setActiveWorkbookId] = useState('');
   const [activeWorkbook, setActiveWorkbook] = useState(null);
@@ -539,6 +541,38 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [isPromotingOpportunities, setIsPromotingOpportunities] = useState(false);
   const [promotionError, setPromotionError] = useState('');
   const [favoriteOpportunityIds, setFavoriteOpportunityIds] = useState([]);
+  const [isTableDragging, setIsTableDragging] = useState(false);
+
+  const handleTableDragStart = (event) => {
+    if (
+      event.button !== 0 ||
+      event.target.closest('input, textarea, select, button, a, [role="button"]')
+    ) {
+      return;
+    }
+
+    tableDragRef.current = {
+      startX: event.clientX,
+      scrollLeft: tableScrollerRef.current?.scrollLeft || 0,
+    };
+    setIsTableDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleTableDragMove = (event) => {
+    if (!isTableDragging || !tableScrollerRef.current) return;
+    event.preventDefault();
+    tableScrollerRef.current.scrollLeft =
+      tableDragRef.current.scrollLeft - (event.clientX - tableDragRef.current.startX);
+  };
+
+  const handleTableDragEnd = (event) => {
+    if (!isTableDragging) return;
+    setIsTableDragging(false);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   useEffect(() => {
     if (isContactsLibrary) return undefined;
@@ -1936,7 +1970,20 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
                   <div className="space-y-5 transition-all duration-300">
                     <div className="min-w-0">
-                      <div className="gestiona-scrollbar overflow-x-auto">
+                      <div
+                        ref={tableScrollerRef}
+                        onPointerDown={handleTableDragStart}
+                        onPointerMove={handleTableDragMove}
+                        onPointerUp={handleTableDragEnd}
+                        onPointerCancel={handleTableDragEnd}
+                        onLostPointerCapture={handleTableDragEnd}
+                        onDragStart={(event) => event.preventDefault()}
+                        className={`overflow-x-auto touch-pan-y [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+                          isTableDragging
+                            ? 'cursor-grabbing select-none'
+                            : 'cursor-grab'
+                        }`}
+                      >
                         <div style={{ minWidth: tableMinWidth }}>
                       {filteredRows.length ? (
                         <table className="w-full table-fixed border-collapse">

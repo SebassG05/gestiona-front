@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
+import { isProposalOverdue } from '../utils/proposalDeadline.js';
 import {
   Activity,
   AlertTriangle,
@@ -523,6 +524,7 @@ const PortalAnalyticsPage = () => {
       .map((item) => ({ ...item, deadline: new Date(item.deadlineApertura) }))
       .filter((item) => item.deadline >= today)
       .sort((a, b) => a.deadline - b.deadline).slice(0, 5);
+    const overdueProposals = proposals.filter((item) => isProposalOverdue(item, today));
 
     return {
       opportunities, presented, projects, budget,
@@ -541,12 +543,13 @@ const PortalAnalyticsPage = () => {
       trend,
       deadlines,
       alerts: [
+        { label: 'Propuestas vencidas', value: overdueProposals.length, icon: CalendarClock, href: `/dashboard/portal/${portalId}/proposals` },
         { label: 'Deadlines en 30 días', value: deadlines.filter((item) => item.deadline <= nextMonth).length, icon: CalendarClock },
         { label: 'Tareas bloqueadas', value: data.activities.filter((item) => item.status === 'blocked').length, icon: AlertTriangle },
         { label: 'Propuestas sin responsable', value: proposals.filter((item) => !item.responsable && !item.responsableName).length, icon: Users },
       ],
     };
-  }, [data, proposals]);
+  }, [data, portalId, proposals]);
 
   const removeWidget = (id) => {
     setWidgets((current) => current.filter((item) => item !== id));
@@ -785,13 +788,23 @@ const PortalAnalyticsPage = () => {
 
     return (
       <div className="space-y-3">
-        {analytics.alerts.map(({ label, value, icon: Icon }) => (
-          <div key={label} className="flex items-center gap-3 border-b border-orange-100 py-3">
+        {analytics.alerts.map(({ label, value, icon: Icon, href }) => {
+          const AlertItem = href ? Link : 'div';
+          return (
+          <AlertItem
+            key={label}
+            {...(href ? { to: href } : {})}
+            className={`flex items-center gap-3 border-b border-orange-100 py-3 ${
+              href ? 'group transition hover:bg-orange-50/60' : ''
+            }`}
+          >
             <span className={`grid h-10 w-10 place-items-center rounded-xl ${value ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}><Icon size={18} /></span>
             <span className="min-w-0 flex-1 text-sm font-bold">{label}</span>
             <span className="text-xl font-black">{value}</span>
-          </div>
-        ))}
+            {href && <ArrowRight size={15} className="text-orange-400 transition group-hover:translate-x-0.5" />}
+          </AlertItem>
+          );
+        })}
       </div>
     );
   };

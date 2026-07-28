@@ -35,6 +35,11 @@ import {
 } from 'lucide-react';
 import PortalSidebar from './PortalSidebar.jsx';
 import {
+  getEffectiveProposalStatus,
+  getProposalOverdueDays,
+  isProposalOverdue,
+} from '../utils/proposalDeadline.js';
+import {
   disconnectLinkedWorkbook,
   getExcelLinkStatus,
   getLinkedExcelRows,
@@ -467,7 +472,7 @@ const PortalProposalsPage = () => {
       );
 
     return {
-      estados: uniqueValues((proposal) => proposal.estado),
+      estados: uniqueValues((proposal) => getEffectiveProposalStatus(proposal)),
       prioridades: uniqueValues((proposal) => normalizePriority(proposal.prioridad)),
       programas: uniqueValues((proposal) => proposal.programa),
       fases: uniqueValues((proposal) => proposal.fase),
@@ -495,7 +500,7 @@ const PortalProposalsPage = () => {
       (activeSheet === 'Borradores' && lifecycleStatus === 'draft') ||
       (statusSheets.includes(activeSheet) &&
         lifecycleStatus !== 'draft' &&
-        proposal.estado === activeSheet);
+        getEffectiveProposalStatus(proposal) === activeSheet);
 
     if (!belongsToSheet) return false;
 
@@ -505,7 +510,7 @@ const PortalProposalsPage = () => {
       !normalizedSearch ||
       [
         proposal.nombre,
-        proposal.estado,
+        getEffectiveProposalStatus(proposal),
         proposal.prioridad,
         proposal.tipo,
         proposal.acronimo,
@@ -517,7 +522,7 @@ const PortalProposalsPage = () => {
       ].some((field) => String(field || '').toLowerCase().includes(normalizedSearch));
 
     if (!matchesSearch) return false;
-    if (filters.estado && proposal.estado !== filters.estado) return false;
+    if (filters.estado && getEffectiveProposalStatus(proposal) !== filters.estado) return false;
     if (
       filters.prioridad &&
       normalizePriority(proposal.prioridad) !== normalizePriority(filters.prioridad)
@@ -561,6 +566,10 @@ const PortalProposalsPage = () => {
     };
 
     return [...filteredProposals].sort((firstProposal, secondProposal) => {
+      const overdueOrder =
+        Number(isProposalOverdue(firstProposal)) - Number(isProposalOverdue(secondProposal));
+      if (overdueOrder) return overdueOrder;
+
       const favoriteOrder = Number(favoriteProposalIds.includes(secondProposal._id)) -
         Number(favoriteProposalIds.includes(firstProposal._id));
       if (favoriteOrder) return favoriteOrder;
@@ -1633,6 +1642,8 @@ const PortalProposalsPage = () => {
                     sortedProposals.map((proposal) => {
                       const isSelected =
                         areAllProposalsSelected || proposal._id === selectedProposalId;
+                      const isOverdue = isProposalOverdue(proposal);
+                      const effectiveStatus = getEffectiveProposalStatus(proposal);
 
                       return (
                         <motion.div
@@ -1659,7 +1670,11 @@ const PortalProposalsPage = () => {
                           className={`grid w-full cursor-pointer items-center border-b border-orange-100 px-4 text-center transition duration-200 sm:px-6 ${
                             isCompactView ? 'min-h-[56px]' : 'min-h-[76px]'
                           } ${
-                            isSelected ? 'bg-orange-50/80' : 'bg-white hover:bg-orange-50/45'
+                            isSelected
+                              ? 'bg-orange-50/80'
+                              : isOverdue
+                                ? 'bg-red-50/35 hover:bg-red-50/60'
+                                : 'bg-white hover:bg-orange-50/45'
                           }`}
                         >
                           <div className={`flex items-center justify-center ${isCompactView ? 'py-2.5' : 'py-4'}`}>
@@ -1694,8 +1709,12 @@ const PortalProposalsPage = () => {
                           </div>
                           <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>{proposal.programa || '-'}</div>
                           <div className={`flex items-center justify-center px-2 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
-                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusStyles[proposal.estado] || 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
-                              {proposal.estado || 'Sin estado'}
+                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                              isOverdue
+                                ? 'border-red-200 bg-red-50 text-red-700'
+                                : statusStyles[proposal.estado] || 'border-neutral-200 bg-neutral-50 text-neutral-500'
+                            }`}>
+                              {effectiveStatus}
                             </span>
                           </div>
                           <div className={`flex items-center justify-center px-2 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
@@ -1708,7 +1727,14 @@ const PortalProposalsPage = () => {
                               {proposal.tipo || '-'}
                             </div>
                           )}
-                          <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>{formatDate(proposal.deadlineApertura)}</div>
+                          <div
+                            className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 ${
+                              isOverdue ? 'text-red-700' : 'text-orange-950'
+                            } ${isCompactView ? 'py-2.5' : 'py-4'}`}
+                            title={isOverdue ? `Vencida hace ${getProposalOverdueDays(proposal)} días` : undefined}
+                          >
+                            {isOverdue ? `Venció ${formatDate(proposal.deadlineApertura)}` : formatDate(proposal.deadlineApertura)}
+                          </div>
                           <div className={`flex items-center justify-center px-3 text-sm font-semibold leading-5 text-orange-950 ${isCompactView ? 'py-2.5' : 'py-4'}`}>
                             {getResponsibleLabel(proposal) || '-'}
                           </div>
