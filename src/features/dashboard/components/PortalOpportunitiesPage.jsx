@@ -541,6 +541,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [isPromotingOpportunities, setIsPromotingOpportunities] = useState(false);
   const [promotionError, setPromotionError] = useState('');
   const [favoriteOpportunityIds, setFavoriteOpportunityIds] = useState([]);
+  const [focusedOpportunityRowId, setFocusedOpportunityRowId] = useState('');
   const [isTableDragging, setIsTableDragging] = useState(false);
 
   const handleTableDragStart = (event) => {
@@ -673,6 +674,9 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
         ...(isContactsLibrary && appliedContactFilters.length
           ? { filters: JSON.stringify(appliedContactFilters) }
           : {}),
+        ...(!isContactsLibrary && focusedOpportunityRowId
+          ? { focusRowId: focusedOpportunityRowId }
+          : {}),
       },
     })
       .then((response) => {
@@ -703,7 +707,17 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     isContactsLibrary,
     appliedContactFilters,
     workbookReloadKey,
+    focusedOpportunityRowId,
   ]);
+
+  useEffect(() => {
+    if (!focusedOpportunityRowId || isWorkbookLoading) return undefined;
+    const timeout = window.setTimeout(() => {
+      const row = document.querySelector(`[data-opportunity-row-id="${focusedOpportunityRowId}"]`);
+      row?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    }, 120);
+    return () => window.clearTimeout(timeout);
+  }, [activeWorkbook, focusedOpportunityRowId, isWorkbookLoading]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -761,6 +775,12 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     setFavoriteOpportunityIds((current) => wasFavorite ? current.filter((id) => id !== entityId) : [entityId, ...current]);
     try {
       await setPortalFavorite({ portalId, entityType: 'opportunity', entityId, favorite: !wasFavorite });
+      if (!wasFavorite) {
+        setSearchValue('');
+        setFocusedOpportunityRowId(entityId);
+        setWorkbookPage(1);
+        setWorkbookReloadKey((current) => current + 1);
+      }
     } catch (error) {
       setFavoriteOpportunityIds((current) => wasFavorite ? [entityId, ...current.filter((id) => id !== entityId)] : current.filter((id) => id !== entityId));
       setNotice(error.response?.data?.message || 'No se pudo actualizar el favorito.');
@@ -1156,6 +1176,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     setAppliedContactFilters([]);
     setWorkbookPage(1);
     setWorkbookPagination(emptyRowsPagination);
+    setFocusedOpportunityRowId('');
     setSelectedContactRowIds([]);
     setActiveWorkbookId(workbookId);
   };
@@ -1362,10 +1383,18 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     }
   };
 
-  const handleGlobalResultOpen = (workbookId) => {
+  const handleGlobalResultOpen = (result) => {
     setGlobalSearchValue('');
     setGlobalResults([]);
-    handleWorkbookChange(workbookId);
+    setSearchValue('');
+    setDraftContactFilters([{ header: '', value: '' }]);
+    setAppliedContactFilters([]);
+    setWorkbookPagination(emptyRowsPagination);
+    setSelectedContactRowIds([]);
+    setFocusedOpportunityRowId(result._id);
+    setWorkbookPage(1);
+    setActiveWorkbookId(result.workbook._id);
+    setWorkbookReloadKey((current) => current + 1);
   };
 
   const visibleColumns = useMemo(
@@ -1630,7 +1659,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => handleGlobalResultOpen(result.workbook._id)}
+                                  onClick={() => handleGlobalResultOpen(result)}
                                   className="shrink-0 cursor-pointer rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700 transition hover:bg-orange-200"
                                 >
                                   Abrir pagina
@@ -2049,9 +2078,10 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                   layout="position"
                                   transition={{ layout: { duration: 0.62, ease: [0.22, 1, 0.36, 1] } }}
                                   key={row._id}
+                                  data-opportunity-row-id={!isContactsLibrary ? row._id : undefined}
                                   className={`group text-center text-sm text-orange-950 transition hover:brightness-[0.98] ${
                                     groupIsTinted ? 'bg-orange-50' : 'bg-white'
-                                  }`}
+                                  } ${focusedOpportunityRowId === row._id ? 'relative z-[1] outline outline-2 outline-offset-[-2px] outline-amber-400' : ''}`}
                                 >
                                   {isContactsLibrary && (
                                     <td className="sticky left-0 z-10 w-32 border border-orange-100 bg-inherit px-2 py-3 align-middle">
@@ -2262,6 +2292,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                         pagination={workbookPagination}
                         onPageChange={(nextPage) => {
                           setSearchValue('');
+                          setFocusedOpportunityRowId('');
                           setSelectedOpportunityDetail(null);
                           setWorkbookPage(nextPage);
                         }}
