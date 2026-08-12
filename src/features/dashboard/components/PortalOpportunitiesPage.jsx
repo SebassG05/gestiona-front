@@ -490,6 +490,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const workbookCategory = copy.category;
   const isContactsLibrary = workbookCategory === 'contacts';
   const excelInputRef = useRef(null);
+  const linkedContactsExcelInputRef = useRef(null);
   const tableScrollerRef = useRef(null);
   const tableDragRef = useRef({ startX: 0, scrollLeft: 0 });
   const [workbooks, setWorkbooks] = useState([]);
@@ -535,6 +536,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [linkedContactSearchResults, setLinkedContactSearchResults] = useState([]);
   const [isSearchingLinkedContacts, setIsSearchingLinkedContacts] = useState(false);
   const [linkingSearchContactId, setLinkingSearchContactId] = useState('');
+  const [isAddingLinkedContacts, setIsAddingLinkedContacts] = useState(false);
   const [selectedOpportunityDetail, setSelectedOpportunityDetail] = useState(null);
   const [selectedOpportunityRowIds, setSelectedOpportunityRowIds] = useState([]);
   const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
@@ -1046,6 +1048,80 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       );
     } finally {
       setLinkingSearchContactId('');
+    }
+  };
+
+  const addAndLinkContacts = async ({ name, sourceFileName, sheetName, headerRow, headers, rows }) => {
+    if (!linkedContactsModal?.workbookId || !linkedContactsModal?.primaryRowId || isAddingLinkedContacts) return;
+    setIsAddingLinkedContacts(true);
+    setLinkedContactsError('');
+    try {
+      const imported = await importOpportunityWorkbook({
+        portalId,
+        data: { name, sourceFileName, sheetName, headerRow, category: 'contacts', headers, rows },
+      });
+      const rowIds = imported.data?.rowIds || [];
+      if (rowIds.length) {
+        await linkContactsToOpportunityRow({
+          portalId,
+          workbookId: linkedContactsModal.workbookId,
+          rowId: linkedContactsModal.primaryRowId,
+          contactRowIds: rowIds,
+        });
+      }
+      const refreshedContacts = await loadLinkedContactsForRows({
+        workbookId: linkedContactsModal.workbookId,
+        rowIds: linkedContactsModal.rowIds,
+      });
+      setLinkedContactsModal((current) => current ? { ...current, count: refreshedContacts.length } : current);
+      setNotice(`${rowIds.length} contacto${rowIds.length === 1 ? '' : 's'} creado${rowIds.length === 1 ? '' : 's'} y vinculado${rowIds.length === 1 ? '' : 's'}.`);
+      await loadWorkbooks(linkedContactsModal.workbookId);
+      return true;
+    } catch (error) {
+      setLinkedContactsError(error.response?.data?.message || 'No se pudieron crear y vincular los contactos.');
+      return false;
+    } finally {
+      setIsAddingLinkedContacts(false);
+    }
+  };
+
+  const createLinkedContact = async (contact) => {
+    const values = [contact.name.trim(), contact.email.trim(), contact.entity.trim(), contact.role.trim()];
+    if (!values[0] && !values[1]) {
+      setLinkedContactsError('Introduce al menos el nombre o el email del contacto.');
+      return false;
+    }
+    return addAndLinkContacts({
+      name: `Contacto - ${values[0] || values[1]}`,
+      sourceFileName: 'Contacto creado desde oportunidad.xlsx',
+      sheetName: 'Contactos',
+      headerRow: 1,
+      headers: ['Nombre', 'Email', 'Entidad', 'Rol'],
+      rows: [values],
+    });
+  };
+
+  const importAndLinkContacts = async (event) => {
+    const files = [...(event.target.files || [])];
+    event.target.value = '';
+    if (!files.length) return;
+    if (files.some((file) => !file.name.toLowerCase().endsWith('.xlsx'))) {
+      setLinkedContactsError('Todos los archivos deben estar en formato .xlsx.');
+      return;
+    }
+    for (const file of files) {
+      try {
+        const detected = detectSheetTable(await readXlsxFile(file));
+        if (!detected) throw new Error('Tabla no detectada');
+        await addAndLinkContacts({
+          name: fileNameWithoutExtension(file.name),
+          sourceFileName: file.name,
+          ...detected,
+        });
+      } catch (error) {
+        setLinkedContactsError(`${file.name}: no se pudo leer o importar el Excel.`);
+        break;
+      }
     }
   };
 
@@ -2408,11 +2484,22 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               errorMessage={linkedContactsError}
               onSearchChange={setLinkedContactSearchValue}
               onLinkSearchContact={linkSearchContactToCurrentOpportunity}
+              onCreateContact={createLinkedContact}
+              onImportContacts={() => linkedContactsExcelInputRef.current?.click()}
+              isAddingContacts={isAddingLinkedContacts}
               onCancel={closeLinkedContactsModal}
               onUnlink={unlinkLinkedContact}
             />
           )}
         </AnimatePresence>
+        <input
+          ref={linkedContactsExcelInputRef}
+          type="file"
+          accept=".xlsx"
+          multiple
+          onChange={importAndLinkContacts}
+          className="hidden"
+        />
       </div>
     </PortalSidebar>
   );
@@ -2974,9 +3061,14 @@ const LinkedContactsModal = ({
   errorMessage,
   onSearchChange,
   onLinkSearchContact,
+  onCreateContact,
+  onImportContacts,
+  isAddingContacts,
   onCancel,
   onUnlink,
 }) => {
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [newContact, setNewContact] = useState({ name: '', email: '', entity: '', role: '' });
   const columns = useMemo(() => {
     const columnMap = new Map();
 
@@ -3091,16 +3183,43 @@ const LinkedContactsModal = ({
                   Escribe el nombre, email, entidad o palabra clave y anadelo a este topic.
                 </p>
               </div>
-              <label className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-orange-100 bg-white px-4 py-3 shadow-sm lg:max-w-xl">
-                <Search size={17} className="text-orange-300" />
-                <input
-                  value={searchValue}
-                  onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="Buscar en la biblioteca de contactos..."
-                  className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
-                />
-              </label>
+              <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row lg:max-w-3xl">
+                <label className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-orange-100 bg-white px-4 py-3 shadow-sm">
+                  <Search size={17} className="text-orange-300" />
+                  <input
+                    value={searchValue}
+                    onChange={(event) => onSearchChange(event.target.value)}
+                    placeholder="Buscar en la biblioteca de contactos..."
+                    className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
+                  />
+                </label>
+                <button type="button" onClick={() => setIsCreateFormOpen((current) => !current)} disabled={isAddingContacts} className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-3 text-sm font-semibold text-orange-700 shadow-sm hover:bg-orange-50 disabled:opacity-50">
+                  <UserPlus size={17} /> Crear contacto
+                </button>
+                <button type="button" onClick={onImportContacts} disabled={isAddingContacts} className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
+                  <Upload size={17} /> {isAddingContacts ? 'Procesando...' : 'Importar Excel'}
+                </button>
+              </div>
             </div>
+
+            {isCreateFormOpen && (
+              <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/40 p-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ['name', 'Nombre y apellidos'],
+                    ['email', 'Email'],
+                    ['entity', 'Entidad o empresa'],
+                    ['role', 'Rol'],
+                  ].map(([field, placeholder]) => (
+                    <input key={field} value={newContact[field]} onChange={(event) => setNewContact((current) => ({ ...current, [field]: event.target.value }))} placeholder={placeholder} className="rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-orange-950 outline-none focus:border-orange-400" />
+                  ))}
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsCreateFormOpen(false)} disabled={isAddingContacts} className="rounded-xl border border-orange-100 bg-white px-4 py-2 text-sm font-semibold text-orange-700">Cancelar</button>
+                  <button type="button" onClick={async () => { const created = await onCreateContact(newContact); if (created) { setNewContact({ name: '', email: '', entity: '', role: '' }); setIsCreateFormOpen(false); } }} disabled={isAddingContacts} className="rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{isAddingContacts ? 'Creando...' : 'Crear y vincular'}</button>
+                </div>
+              </div>
+            )}
 
             {searchValue.trim().length >= 2 && (
               <div className="mt-4">
