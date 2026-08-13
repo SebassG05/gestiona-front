@@ -537,6 +537,8 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [isSearchingLinkedContacts, setIsSearchingLinkedContacts] = useState(false);
   const [linkingSearchContactId, setLinkingSearchContactId] = useState('');
   const [isAddingLinkedContacts, setIsAddingLinkedContacts] = useState(false);
+  const [linkedContactImport, setLinkedContactImport] = useState(null);
+  const [contactWorkbookOptions, setContactWorkbookOptions] = useState([]);
   const [selectedOpportunityDetail, setSelectedOpportunityDetail] = useState(null);
   const [selectedOpportunityRowIds, setSelectedOpportunityRowIds] = useState([]);
   const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
@@ -1051,14 +1053,14 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     }
   };
 
-  const addAndLinkContacts = async ({ name, sourceFileName, sheetName, headerRow, headers, rows }) => {
+  const addAndLinkContacts = async ({ name, sourceFileName, sheetName, headerRow, headers, rows, targetWorkbookId }) => {
     if (!linkedContactsModal?.workbookId || !linkedContactsModal?.primaryRowId || isAddingLinkedContacts) return;
     setIsAddingLinkedContacts(true);
     setLinkedContactsError('');
     try {
       const imported = await importOpportunityWorkbook({
         portalId,
-        data: { name, sourceFileName, sheetName, headerRow, category: 'contacts', headers, rows },
+        data: { name, sourceFileName, sheetName, headerRow, category: 'contacts', headers, rows, targetWorkbookId },
       });
       const rowIds = imported.data?.rowIds || [];
       if (rowIds.length) {
@@ -1109,20 +1111,34 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       setLinkedContactsError('Todos los archivos deben estar en formato .xlsx.');
       return;
     }
-    for (const file of files) {
-      try {
-        const detected = detectSheetTable(await readXlsxFile(file));
-        if (!detected) throw new Error('Tabla no detectada');
-        await addAndLinkContacts({
-          name: fileNameWithoutExtension(file.name),
-          sourceFileName: file.name,
-          ...detected,
-        });
-      } catch (error) {
-        setLinkedContactsError(`${file.name}: no se pudo leer o importar el Excel.`);
-        break;
-      }
+    if (files.length > 1) {
+      setLinkedContactsError('Selecciona un solo Excel cada vez para decidir dónde combinarlo.');
+      return;
     }
+    try {
+      const file = files[0];
+      const detected = detectSheetTable(await readXlsxFile(file));
+      if (!detected) throw new Error('Tabla no detectada');
+      const response = await getOpportunityWorkbooks(portalId, { category: 'contacts' });
+      setContactWorkbookOptions(response.data || []);
+      setLinkedContactImport({
+        name: fileNameWithoutExtension(file.name),
+        sourceFileName: file.name,
+        ...detected,
+      });
+    } catch {
+      setLinkedContactsError(`${files[0].name}: no se pudo leer el Excel.`);
+    }
+  };
+
+  const confirmLinkedContactImport = async ({ mode, name, targetWorkbookId }) => {
+    if (!linkedContactImport) return;
+    const success = await addAndLinkContacts({
+      ...linkedContactImport,
+      name: name.trim(),
+      targetWorkbookId: mode === 'merge' ? targetWorkbookId : undefined,
+    });
+    if (success) setLinkedContactImport(null);
   };
 
   useEffect(() => {
@@ -2500,6 +2516,17 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
           onChange={importAndLinkContacts}
           className="hidden"
         />
+        <AnimatePresence>
+          {linkedContactImport && (
+            <LinkedContactImportModal
+              file={linkedContactImport}
+              workbooks={contactWorkbookOptions}
+              isImporting={isAddingLinkedContacts}
+              onCancel={() => setLinkedContactImport(null)}
+              onConfirm={confirmLinkedContactImport}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </PortalSidebar>
   );
@@ -2999,6 +3026,46 @@ const ContactRowModal = ({ mode, columns, values, isSaving, onChange, onCancel, 
     </motion.div>
   </motion.div>
 );
+
+const LinkedContactImportModal = ({ file, workbooks, isImporting, onCancel, onConfirm }) => {
+  const [mode, setMode] = useState(workbooks.length ? 'merge' : 'new');
+  const [name, setName] = useState(file.name || fileNameWithoutExtension(file.sourceFileName));
+  const [targetWorkbookId, setTargetWorkbookId] = useState(workbooks[0]?._id || '');
+  const canSubmit = mode === 'merge' ? Boolean(targetWorkbookId) : Boolean(name.trim());
+
+  return (
+    <motion.div className="fixed inset-0 z-[70] grid place-items-center bg-orange-950/45 px-4 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <motion.div initial={{ y: 16, scale: 0.98 }} animate={{ y: 0, scale: 1 }} exit={{ y: 12, scale: 0.98 }} className="w-full max-w-xl overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-2xl">
+        <div className="border-b border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 px-6 py-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">Importar contactos</p>
+          <h2 className="mt-2 text-2xl font-semibold text-orange-950">¿Dónde quieres guardar este Excel?</h2>
+          <p className="mt-2 text-sm text-orange-600">{file.sourceFileName} · {file.rows.length} contactos</p>
+        </div>
+        <div className="space-y-4 p-6">
+          <label className={`block cursor-pointer rounded-2xl border p-4 ${mode === 'merge' ? 'border-orange-400 bg-orange-50' : 'border-orange-100'}`}>
+            <span className="flex items-center gap-3 font-semibold text-orange-950"><input type="radio" checked={mode === 'merge'} disabled={!workbooks.length} onChange={() => setMode('merge')} /> Combinar con un Excel existente</span>
+            <p className="ml-7 mt-1 text-xs text-orange-500">Añade las filas al Excel seleccionado sin borrar sus contactos.</p>
+            {mode === 'merge' && (
+              <select value={targetWorkbookId} onChange={(event) => setTargetWorkbookId(event.target.value)} className="mt-3 w-full rounded-xl border border-orange-200 bg-white px-4 py-3 text-sm outline-none">
+                {workbooks.map((workbook) => <option key={workbook._id} value={workbook._id}>{workbook.name} ({workbook.rowCount || 0} contactos)</option>)}
+              </select>
+            )}
+            {!workbooks.length && <p className="ml-7 mt-2 text-xs font-semibold text-orange-500">Todavía no hay Excel de contactos existentes.</p>}
+          </label>
+          <label className={`block cursor-pointer rounded-2xl border p-4 ${mode === 'new' ? 'border-orange-400 bg-orange-50' : 'border-orange-100'}`}>
+            <span className="flex items-center gap-3 font-semibold text-orange-950"><input type="radio" checked={mode === 'new'} onChange={() => setMode('new')} /> Crear un Excel independiente</span>
+            <p className="ml-7 mt-1 text-xs text-orange-500">Crea una nueva pestaña en la biblioteca de contactos.</p>
+            {mode === 'new' && <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre personalizado del Excel" className="mt-3 w-full rounded-xl border border-orange-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-400" />}
+          </label>
+        </div>
+        <div className="flex justify-end gap-3 border-t border-orange-100 px-6 py-4">
+          <button type="button" onClick={onCancel} disabled={isImporting} className="rounded-xl border border-orange-100 px-4 py-2.5 text-sm font-semibold text-orange-700 disabled:opacity-50">Cancelar</button>
+          <button type="button" onClick={() => onConfirm({ mode, name, targetWorkbookId })} disabled={!canSubmit || isImporting} className="rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{isImporting ? 'Importando...' : mode === 'merge' ? 'Combinar y vincular' : 'Crear y vincular'}</button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
 
 const LinkedContactsBackground = () => (
   <>
