@@ -2432,6 +2432,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                               count: selectedOpportunityDetail.count,
                             })
                           }
+                          onOpenConceptNote={() => navigate(`/dashboard/portal/${portalId}/opportunities/${activeWorkbook.workbook._id}/${selectedOpportunityDetail.rows[0]._id}/concept-note`)}
                         />
                       )}
                     </AnimatePresence>
@@ -2640,7 +2641,7 @@ const PromoteOpportunitiesModal = ({
   </motion.div>
 );
 
-const OpportunityTopicDetailPanel = ({ detail, onClose, onOpenContacts }) => {
+const OpportunityTopicDetailPanel = ({ detail, onClose, onOpenContacts, onOpenConceptNote }) => {
   const detailRows = detail.rows
     .map((row) => {
       const cells = opportunityDetailColumnGroups.map((group) => ({
@@ -2689,19 +2690,15 @@ const OpportunityTopicDetailPanel = ({ detail, onClose, onOpenContacts }) => {
             <X size={18} />
           </button>
         </div>
-        <button
-          type="button"
-          onClick={onOpenContacts}
-          className="mt-4 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-orange-100 bg-white px-4 py-3 text-sm font-semibold text-orange-800 shadow-sm transition hover:border-orange-300 hover:bg-orange-50"
-        >
-          <UserPlus size={16} />
-          Contactos vinculados
-          {detail.count > 0 && (
-            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
-              {detail.count}
-            </span>
-          )}
-        </button>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={onOpenContacts} className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-orange-100 bg-white px-4 py-3 text-sm font-semibold text-orange-800 shadow-sm transition hover:border-orange-300 hover:bg-orange-50">
+            <UserPlus size={16} /> Contactos vinculados
+            {detail.count > 0 && <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">{detail.count}</span>}
+          </button>
+          <button type="button" onClick={onOpenConceptNote} className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600">
+            <FilePenLine size={16} /> Concept Note
+          </button>
+        </div>
       </div>
 
       <div className="gestiona-scrollbar min-h-0 flex-1 overflow-y-auto p-5">

@@ -23,6 +23,29 @@ export const searchOpportunityWorkbooks = async ({ portalId, query, category }) 
   return response.data;
 };
 
+export const getOpportunityConceptNote = async ({ portalId, workbookId, rowId }) => {
+  const response = await api.get(`${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}/concept-note`);
+  return response.data;
+};
+
+export const saveOpportunityConceptNote = async ({ portalId, workbookId, rowId, data }) => {
+  const response = await api.put(`${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}/concept-note`, data);
+  return response.data;
+};
+
+export const downloadOpportunityConceptNote = async ({ portalId, workbookId, rowId }) => {
+  return api.get(`${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}/concept-note/download`, { responseType: 'blob' });
+};
+
+export const downloadOpportunityConceptNoteVersion = async ({ portalId, workbookId, rowId, versionId }) => {
+  return api.get(`${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}/concept-note/versions/${encodeURIComponent(versionId)}/download`, { responseType: 'blob' });
+};
+
+export const deleteOpportunityConceptNote = async ({ portalId, workbookId, rowId }) => {
+  const response = await api.delete(`${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}/concept-note`);
+  return response.data;
+};
+
 export const importOpportunityWorkbook = async ({ portalId, data }) => {
   const response = await api.post(`${workbookPath(portalId)}/import`, data);
   return response.data;

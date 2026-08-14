@@ -7,6 +7,7 @@ import DashboardPage from '../features/dashboard/components/DashboardPage.jsx';
 import JoinPortalPage from '../features/dashboard/components/JoinPortalPage.jsx';
 import MyPortalsPage from '../features/dashboard/components/MyPortalsPage.jsx';
 import PortalOpportunitiesPage from '../features/dashboard/components/PortalOpportunitiesPage.jsx';
+import OpportunityConceptNotePage from '../features/dashboard/components/OpportunityConceptNotePage.jsx';
 import PortalSettingsPage from '../features/dashboard/components/PortalSettingsPage.jsx';
 import PortalTeamPage from '../features/dashboard/components/PortalTeamPage.jsx';
 import PortalBusinessTripsPage from '../features/dashboard/components/PortalBusinessTripsPage.jsx';
@@ -156,6 +157,10 @@ const AppRouter = () => {
               <PortalOpportunitiesPage />
             </ProtectedRoute>
           }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/opportunities/:workbookId/:rowId/concept-note"
+          element={<ProtectedRoute><OpportunityConceptNotePage /></ProtectedRoute>}
         />
         <Route
           path="/dashboard/portal/:portalId/contacts"
