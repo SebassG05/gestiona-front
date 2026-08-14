@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Check, Copy, Crown, MailPlus, Save, Send, Settings, Shield, Trash2, UserRound, Users } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import PortalSidebar from './PortalSidebar.jsx';
-import { getPortalMembers, invitePortalMembers, removePortalMember } from '../services/portalService.js';
+import { getPortalMembers, invitePortalMembers, removePortalMember, updateMemberPageDeletePermission } from '../services/portalService.js';
 import { updateCurrentUser } from '../services/userService.js';
 
 const inputClass =
@@ -24,6 +24,7 @@ const PortalSettingsPage = () => {
   const [membersError, setMembersError] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
   const [removingMemberId, setRemovingMemberId] = useState('');
+  const [updatingPermissionMemberId, setUpdatingPermissionMemberId] = useState('');
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('user') || '{}');
@@ -184,6 +185,21 @@ const PortalSettingsPage = () => {
       setMembersError(err.response?.data?.message || 'No se pudo expulsar al miembro');
     } finally {
       setRemovingMemberId('');
+    }
+  };
+
+  const handleDeletePermissionChange = async (member, allowed) => {
+    if (!isOwner || member.role === 'owner') return;
+    setUpdatingPermissionMemberId(member.id);
+    setMembersError('');
+    try {
+      await updateMemberPageDeletePermission({ portalId, memberId: member.id, allowed });
+      setMembers((current) => current.map((item) => item.id === member.id ? { ...item, canDeletePages: allowed } : item));
+      setSuccessMessage(allowed ? 'Permiso para eliminar paginas concedido' : 'Permiso para eliminar paginas retirado');
+    } catch (err) {
+      setMembersError(err.response?.data?.message || 'No se pudo actualizar el permiso');
+    } finally {
+      setUpdatingPermissionMemberId('');
     }
   };
 
@@ -526,10 +542,10 @@ const PortalSettingsPage = () => {
                   return (
                     <article
                       key={member.id}
-                      className="flex flex-col gap-4 rounded-2xl border border-orange-100 bg-orange-50/35 p-4 sm:flex-row sm:items-center sm:justify-between"
+                      className="group overflow-hidden rounded-[22px] border border-orange-100 bg-white shadow-[0_8px_24px_rgba(249,115,22,0.05)] transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_14px_32px_rgba(249,115,22,0.09)]"
                     >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-orange-500 shadow-sm">
+                      <div className="flex min-w-0 items-center gap-4 px-5 py-5">
+                        <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl shadow-sm ${member.role === 'owner' ? 'bg-gradient-to-br from-orange-500 to-red-500 text-white' : 'border border-orange-100 bg-orange-50 text-orange-500'}`}>
                           {member.role === 'owner' ? <Crown size={19} strokeWidth={2.1} /> : <Shield size={19} strokeWidth={2.1} />}
                         </span>
                         <div className="min-w-0">
@@ -537,7 +553,7 @@ const PortalSettingsPage = () => {
                             <h3 className="truncate text-base font-semibold text-orange-950">
                               {member.username || member.email}
                             </h3>
-                            <span className="rounded-full border border-orange-100 bg-white px-2.5 py-1 text-xs font-semibold text-orange-600">
+                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${member.role === 'owner' ? 'border-orange-200 bg-orange-50 text-orange-600' : 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
                               {member.role === 'owner' ? 'Propietario' : 'Miembro'}
                             </span>
                           </div>
@@ -545,16 +561,34 @@ const PortalSettingsPage = () => {
                         </div>
                       </div>
 
+                      <div className="flex flex-col gap-3 border-t border-orange-100 bg-gradient-to-r from-orange-50/55 to-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wide text-orange-950">Eliminar páginas</p>
+                          <p className="mt-1 text-xs text-orange-500">Permite borrar Excel completos de Oportunidades y Contactos.</p>
+                        </div>
+                      {member.role === 'owner' ? (
+                        <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"><Check size={14} strokeWidth={2.5} /> Acceso permanente</span>
+                      ) : isOwner ? (
+                        <button type="button" role="switch" aria-checked={Boolean(member.canDeletePages)} disabled={updatingPermissionMemberId === member.id} onClick={() => handleDeletePermissionChange(member, !member.canDeletePages)} className={`inline-flex shrink-0 cursor-pointer items-center gap-3 rounded-full border py-2 pl-3 pr-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-60 ${member.canDeletePages ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-neutral-200 bg-white text-neutral-500 hover:border-orange-200'}`}>
+                          {member.canDeletePages ? 'Permitido' : 'Sin permiso'}
+                          <span className={`relative h-6 w-11 rounded-full transition ${member.canDeletePages ? 'bg-emerald-500' : 'bg-neutral-200'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${member.canDeletePages ? 'translate-x-6' : 'translate-x-1'}`} /></span>
+                        </button>
+                      ) : member.canDeletePages ? (
+                        <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"><Check size={14} /> Permitido</span>
+                      ) : <span className="shrink-0 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-400">Sin permiso</span>}
+                      </div>
                       {canRemove && (
+                        <div className="border-t border-red-50 px-5 py-3 text-right">
                         <button
                           type="button"
                           onClick={() => handleRemoveMember(member)}
                           disabled={removingMemberId === member.id}
-                          className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-500 transition hover:border-red-200 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <Trash2 size={16} strokeWidth={2.1} />
+                          <Trash2 size={14} strokeWidth={2.1} />
                           {removingMemberId === member.id ? 'Expulsando...' : 'Expulsar'}
                         </button>
+                        </div>
                       )}
                     </article>
                   );

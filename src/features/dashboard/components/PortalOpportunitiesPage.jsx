@@ -43,6 +43,7 @@ import {
   updateOpportunityWorkbookRow,
 } from '../services/opportunityWorkbookService.js';
 import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
+import { getPortalMembers } from '../services/portalService.js';
 
 const OPPORTUNITY_ROWS_PAGE_SIZE = 80;
 
@@ -547,6 +548,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [favoriteOpportunityIds, setFavoriteOpportunityIds] = useState([]);
   const [focusedOpportunityRowId, setFocusedOpportunityRowId] = useState('');
   const [isTableDragging, setIsTableDragging] = useState(false);
+  const [canDeletePages, setCanDeletePages] = useState(false);
 
   const handleTableDragStart = (event) => {
     if (
@@ -578,6 +580,20 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
+
+  useEffect(() => {
+    let active = true;
+    let currentUserId = '';
+    try { currentUserId = JSON.parse(localStorage.getItem('user') || '{}').id || ''; } catch { currentUserId = ''; }
+    getPortalMembers(portalId)
+      .then((response) => {
+        if (!active) return;
+        const currentMember = (response.data || []).find((member) => String(member.id) === String(currentUserId));
+        setCanDeletePages(Boolean(currentMember?.canDeletePages));
+      })
+      .catch(() => { if (active) setCanDeletePages(false); });
+    return () => { active = false; };
+  }, [portalId]);
 
   useEffect(() => {
     if (isContactsLibrary) return undefined;
@@ -1344,7 +1360,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
           workbookId: activeWorkbook.workbook._id,
           values: rowFormValues,
         });
-        setNotice('Contacto anadido correctamente.');
+        setNotice(isContactsLibrary ? 'Contacto anadido correctamente.' : 'Oportunidad creada correctamente.');
       }
 
       setRowModal(null);
@@ -1616,15 +1632,28 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                     className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
                   />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => excelInputRef.current?.click()}
-                  disabled={isReadingFiles}
-                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Upload size={18} />
-                  {isReadingFiles ? 'Leyendo Excel...' : 'Importar Excel'}
-                </button>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {!isContactsLibrary && (
+                    <button
+                      type="button"
+                      onClick={openCreateRowModal}
+                      disabled={!activeWorkbook?.workbook?._id || isWorkbookLoading}
+                      className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-200 bg-white px-5 py-3 text-sm font-semibold text-orange-700 shadow-sm transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={!activeWorkbook?.workbook?._id ? 'Importa o selecciona primero un Excel de oportunidades' : 'Crear una oportunidad en el Excel seleccionado'}
+                    >
+                      <Plus size={18} /> Crear oportunidad
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => excelInputRef.current?.click()}
+                    disabled={isReadingFiles}
+                    className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Upload size={18} />
+                    {isReadingFiles ? 'Leyendo Excel...' : 'Importar Excel'}
+                  </button>
+                </div>
               </div>
             </header>
 
@@ -1912,14 +1941,14 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                           />
                         </button>
                       </div>
-                      <button
+                      {canDeletePages && <button
                         type="button"
                         onClick={() => setWorkbookToDelete(activeWorkbook.workbook)}
                         className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-red-100 bg-white px-4 py-3 text-sm font-semibold text-red-500 transition hover:bg-red-50"
                       >
                         <Trash2 size={16} />
                         Eliminar página
-                      </button>
+                      </button>}
                     </div>
                   </div>
 
@@ -2431,7 +2460,8 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
           {rowModal && activeWorkbook && (
             <ContactRowModal
               mode={rowModal.mode}
-              columns={visibleColumns}
+              columns={(activeWorkbook.workbook.headers || []).map((header, sourceIndex) => ({ header, sourceIndex })).filter((column) => !isGeneratedHeader(column.header))}
+              entityLabel={isContactsLibrary ? 'contacto' : 'oportunidad'}
               values={rowFormValues}
               isSaving={isSavingRow}
               onChange={(sourceIndex, value) =>
@@ -2934,7 +2964,11 @@ const ImportModal = ({ preview, copy, isImporting, onCancel, onImport }) => (
   </motion.div>
 );
 
-const ContactRowModal = ({ mode, columns, values, isSaving, onChange, onCancel, onSave }) => (
+const ContactRowModal = ({ mode, columns, values, isSaving, entityLabel = 'contacto', onChange, onCancel, onSave }) => {
+  const isOpportunity = entityLabel === 'oportunidad';
+  const entityTitle = isOpportunity ? 'oportunidad' : 'contacto';
+  const newEntityTitle = isOpportunity ? 'Nueva oportunidad' : 'Nuevo contacto';
+  return (
   <motion.div
     className="fixed inset-0 z-50 grid place-items-center bg-orange-950/45 px-4 py-6 backdrop-blur-sm"
     initial={{ opacity: 0 }}
@@ -2950,13 +2984,13 @@ const ContactRowModal = ({ mode, columns, values, isSaving, onChange, onCancel, 
       <div className="flex items-start justify-between border-b border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 px-6 py-5">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
-            {mode === 'edit' ? 'Editar contacto' : 'Nuevo contacto'}
+            {mode === 'edit' ? `Editar ${entityTitle}` : newEntityTitle}
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-orange-950">
-            {mode === 'edit' ? 'Actualizar contacto' : 'Anadir contacto'}
+            {mode === 'edit' ? `Actualizar ${entityTitle}` : `Crear ${entityTitle}`}
           </h2>
           <p className="mt-2 text-sm text-orange-600">
-            Completa los campos que quieras guardar dentro de esta pagina de contactos.
+            Completa los campos que quieras guardar dentro de este Excel de {isOpportunity ? 'oportunidades' : 'contactos'}.
           </p>
         </div>
         <button
@@ -3020,12 +3054,13 @@ const ContactRowModal = ({ mode, columns, values, isSaving, onChange, onCancel, 
           className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-semibold text-white transition hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           {mode === 'edit' ? <Edit3 size={17} /> : <Plus size={17} />}
-          {isSaving ? 'Guardando...' : mode === 'edit' ? 'Guardar cambios' : 'Anadir contacto'}
+          {isSaving ? 'Guardando...' : mode === 'edit' ? 'Guardar cambios' : `Crear ${entityTitle}`}
         </button>
       </div>
     </motion.div>
   </motion.div>
-);
+  );
+};
 
 const LinkedContactImportModal = ({ file, workbooks, isImporting, onCancel, onConfirm }) => {
   const [mode, setMode] = useState(workbooks.length ? 'merge' : 'new');

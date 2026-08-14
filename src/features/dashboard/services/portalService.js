@@ -41,3 +41,11 @@ export const removePortalMember = async ({ portalId, memberId }) => {
   );
   return response.data;
 };
+
+export const updateMemberPageDeletePermission = async ({ portalId, memberId, allowed }) => {
+  const response = await api.patch(
+    `/portals/${encodeURIComponent(portalId)}/members/${encodeURIComponent(memberId)}/page-delete-permission`,
+    { allowed }
+  );
+  return response.data;
+};
