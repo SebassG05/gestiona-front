@@ -3172,6 +3172,30 @@ const LinkedContactsModal = ({
 }) => {
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [newContact, setNewContact] = useState({ name: '', email: '', entity: '', role: '' });
+  const linkedContactsTableRef = useRef(null);
+  const linkedContactsDragRef = useRef({ startX: 0, scrollLeft: 0 });
+  const [isLinkedContactsDragging, setIsLinkedContactsDragging] = useState(false);
+
+  const startLinkedContactsDrag = (event) => {
+    if (event.button !== 0 || event.target.closest('button, a, input, select, textarea, [role="button"]')) return;
+    const scroller = linkedContactsTableRef.current;
+    if (!scroller || scroller.scrollWidth <= scroller.clientWidth) return;
+    linkedContactsDragRef.current = { startX: event.clientX, scrollLeft: scroller.scrollLeft };
+    setIsLinkedContactsDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveLinkedContactsDrag = (event) => {
+    if (!isLinkedContactsDragging || !linkedContactsTableRef.current) return;
+    event.preventDefault();
+    linkedContactsTableRef.current.scrollLeft = linkedContactsDragRef.current.scrollLeft - (event.clientX - linkedContactsDragRef.current.startX);
+  };
+
+  const endLinkedContactsDrag = (event) => {
+    if (!isLinkedContactsDragging) return;
+    setIsLinkedContactsDragging(false);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   const columns = useMemo(() => {
     const columnMap = new Map();
 
@@ -3379,7 +3403,19 @@ const LinkedContactsModal = ({
             </div>
           ) : contacts.length ? (
             <div className="mx-auto max-w-[1800px] overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm">
-              <div className="gestiona-scrollbar overflow-x-auto">
+              <div className="flex items-center justify-between border-b border-orange-100 bg-orange-50/55 px-4 py-2 text-xs font-semibold text-orange-500">
+                <span>Contactos vinculados</span>
+                <span className="hidden sm:inline">Mantén pulsado y arrastra para ver todas las columnas</span>
+              </div>
+              <div
+                ref={linkedContactsTableRef}
+                onPointerDown={startLinkedContactsDrag}
+                onPointerMove={moveLinkedContactsDrag}
+                onPointerUp={endLinkedContactsDrag}
+                onPointerCancel={endLinkedContactsDrag}
+                className={`gestiona-scrollbar overflow-x-auto ${isLinkedContactsDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+                style={{ touchAction: 'pan-y' }}
+              >
                 <table className="min-w-full border-collapse text-sm text-orange-950">
                   <thead className="bg-gradient-to-r from-orange-500 to-red-500 text-xs font-semibold uppercase text-white">
                     <tr>
