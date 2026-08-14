@@ -1492,9 +1492,10 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   };
 
   const handleGlobalResultOpen = (result) => {
+    const selectedSearch = globalSearchValue.trim();
     setGlobalSearchValue('');
     setGlobalResults([]);
-    setSearchValue('');
+    setSearchValue(selectedSearch);
     setDraftContactFilters([{ header: '', value: '' }]);
     setAppliedContactFilters([]);
     setWorkbookPagination(emptyRowsPagination);
