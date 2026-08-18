@@ -324,8 +324,8 @@ const CreateProposalPage = () => {
             value={formData[field.name]}
             onChange={handleChange}
             placeholder={field.placeholder}
-            rows={5}
-            className={`${fieldBaseClass} resize-none`}
+            rows={16}
+            className={`${fieldBaseClass} min-h-[22rem] resize-y font-mono leading-6`}
           />
         ) : field.type === 'select' ? (
           <select

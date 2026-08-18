@@ -20,6 +20,7 @@ import {
   Filter,
   Link as LinkIcon,
   Mail,
+  Maximize2,
   Trash2,
   Plus,
   Search,
@@ -54,6 +55,7 @@ import {
   deleteProposal,
   getPortalProposals,
   importProposals,
+  updateProposal,
 } from '../services/proposalService.js';
 import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
 
@@ -300,6 +302,7 @@ const PortalProposalsPage = () => {
   const [isExcelSyncing, setIsExcelSyncing] = useState(false);
   const [excelError, setExcelError] = useState('');
   const [selectedProposalId, setSelectedProposalId] = useState(location.state?.selectedProposalId || null);
+  const [notesProposal, setNotesProposal] = useState(null);
   const [activeSheet, setActiveSheet] = useState(
     location.state?.activeSheet || storedSheetPreferences?.activeSheet || baseSheets[0]
   );
@@ -708,6 +711,41 @@ const PortalProposalsPage = () => {
     } finally {
       setIsDeletingProposal(false);
     }
+  };
+
+  const handleSaveProposalNotes = async (proposal, notas) => {
+    const data = {
+      lifecycleStatus: proposal.lifecycleStatus,
+      nombre: proposal.nombre,
+      id: proposal.proposalId || '',
+      programa: proposal.programa || '',
+      convocatoria: proposal.convocatoria || '',
+      acronimo: proposal.acronimo || '',
+      tipo: proposal.tipo || '',
+      deadlineApertura: proposal.deadlineApertura || '',
+      fase: proposal.fase || '',
+      estado: proposal.estado || '',
+      prioridad: proposal.prioridad || '',
+      responsable: proposal.responsable?._id || proposal.responsable || '',
+      responsableName: proposal.responsableName || '',
+      rolEvenor: proposal.rolEvenor || '',
+      coordinadorLead: proposal.coordinadorLead || '',
+      presupuestoTotal: proposal.presupuestoTotal,
+      presupuestoEvenor: proposal.presupuestoEvenor,
+      probabilidad: proposal.probabilidad,
+      valorEsperado: proposal.valorEsperado,
+      proyectoEjecucionVinculado: proposal.proyectoEjecucionVinculado || '',
+      pagosRecibidosVinculados: proposal.pagosRecibidosVinculados,
+      balancePendiente: proposal.balancePendiente,
+      proximaAccion: proposal.proximaAccion || '',
+      fuenteUrl: proposal.fuenteUrl || '',
+      notas,
+    };
+    const response = await updateProposal({ portalId, proposalId: proposal._id, data });
+    const updatedProposal = { ...proposal, ...(response.data || {}), notas };
+    setProposals((current) => current.map((item) => item._id === proposal._id ? updatedProposal : item));
+    setNotesProposal(updatedProposal);
+    return updatedProposal;
   };
 
   const handleToggleAllProposals = () => {
@@ -2181,6 +2219,37 @@ const PortalProposalsPage = () => {
                     </div>
 
                     <div className="space-y-3 p-4">
+                      {selectedProposal.notas?.trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => setNotesProposal(selectedProposal)}
+                          className="group inline-flex w-full cursor-pointer items-center justify-between rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-rose-50 px-4 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-md"
+                        >
+                          <span className="flex min-w-0 items-center gap-3">
+                            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-orange-500 to-red-500 text-white shadow-sm">
+                              <FileText size={18} />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-bold text-orange-950">Expandir notas</span>
+                              <span className="block truncate text-xs text-orange-500">Abrir cuaderno completo</span>
+                            </span>
+                          </span>
+                          <Maximize2 size={17} className="shrink-0 text-orange-500 transition group-hover:scale-110" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/dashboard/portal/${portalId}/proposals/${selectedProposal._id}/edit`)}
+                          className="group inline-flex w-full cursor-pointer items-center justify-between rounded-2xl border border-dashed border-orange-300 bg-orange-50/70 px-4 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-orange-500 hover:bg-orange-50"
+                        >
+                          <span className="flex items-center gap-3">
+                            <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-orange-500 shadow-sm"><Plus size={19} /></span>
+                            <span><span className="block text-sm font-bold text-orange-950">Crear nota</span><span className="block text-xs text-orange-500">Añadir información de trabajo</span></span>
+                          </span>
+                          <SquarePen size={17} className="text-orange-500" />
+                        </button>
+                      )}
+
                       {selectedProposal.lifecycleStatus === 'draft' && (
                         <button
                           type="button"
@@ -2257,9 +2326,6 @@ const PortalProposalsPage = () => {
                           <p>Presupuesto EVENOR: {formatCurrency(selectedProposal.presupuestoEvenor)}</p>
                           <p>Balance pendiente: {formatCurrency(selectedProposal.balancePendiente)}</p>
                         </div>
-                      </DetailSection>
-                      <DetailSection icon={FileText} title="Notas">
-                        {selectedProposal.notas || 'Sin notas adicionales'}
                       </DetailSection>
                       {selectedProposal.fuenteUrl && (
                         <a
@@ -2476,6 +2542,16 @@ const PortalProposalsPage = () => {
         </AnimatePresence>
 
         <AnimatePresence>
+          {notesProposal && (
+            <ProposalNotesModal
+              proposal={notesProposal}
+              onClose={() => setNotesProposal(null)}
+              onSave={handleSaveProposalNotes}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
           {isDeleteAllOpen && (
             <motion.div
               className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/45 px-4 backdrop-blur-sm"
@@ -2557,6 +2633,206 @@ const DetailSection = ({ icon: Icon, title, children }) => (
     <div className="mt-3 break-words text-sm leading-6 text-orange-700">{children}</div>
   </section>
 );
+
+const ProposalNotesModal = ({ proposal, onClose, onSave }) => {
+  const [activeNotesView, setActiveNotesView] = useState('partA');
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftNotes, setDraftNotes] = useState(proposal.notas || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const allLines = String(isEditing ? draftNotes : proposal.notas || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const partAMarkerIndex = allLines.findIndex((line) => /^ESTADO DE PART A/i.test(line));
+  const hasPartA = partAMarkerIndex >= 0;
+  const lines = hasPartA
+    ? activeNotesView === 'partA'
+      ? allLines.slice(partAMarkerIndex)
+      : allLines.slice(0, partAMarkerIndex)
+    : allLines;
+  const documentLabels = lines.filter((line) =>
+    /^(INFORMACIÓN IMPORTADA|PUNTOS PENDIENTES|ESTADO DE PART A)/i.test(line)
+  );
+  const noteSections = [];
+  let currentSection = { title: 'Notas generales', items: [] };
+
+  lines.forEach((line) => {
+    if (/^(INFORMACIÓN IMPORTADA|PUNTOS PENDIENTES|ESTADO DE PART A)/i.test(line)) return;
+    if (/^\d+\.(?:\s|$)/.test(line)) {
+      if (currentSection.items.length) noteSections.push(currentSection);
+      currentSection = { title: line.replace(/^\d+\.\s*/, ''), items: [] };
+      return;
+    }
+    currentSection.items.push(line);
+  });
+  if (currentSection.items.length) noteSections.push(currentSection);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      await onSave(proposal, draftNotes);
+      setIsEditing(false);
+    } catch (error) {
+      setSaveError(error.response?.data?.message || 'No se pudieron guardar las notas.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-[#2b0b05]/75 p-2 backdrop-blur-md sm:p-3"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <motion.article
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="proposal-notes-title"
+        initial={{ opacity: 0, y: 28, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.98 }}
+        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+        className="flex h-[96vh] w-[98vw] max-w-[1500px] flex-col overflow-hidden rounded-[30px] border border-orange-100 bg-[#fffaf7] shadow-[0_35px_120px_rgba(48,12,4,.35)]"
+      >
+        <header className="relative shrink-0 overflow-hidden border-b border-orange-100 bg-gradient-to-br from-[#3f1208] via-[#641b0d] to-[#8c2814] px-6 py-7 text-white sm:px-10">
+          <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full border border-white/10" />
+          <div className="relative flex items-start justify-between gap-5">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">Cuaderno de propuesta</p>
+              <h2 id="proposal-notes-title" className="mt-2 text-3xl font-black leading-tight sm:text-4xl">
+                {proposal.acronimo || proposal.nombre}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm text-orange-100/75">{proposal.nombre}</p>
+            </div>
+            <button type="button" onClick={onClose} className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-full border border-white/15 bg-white/10 transition hover:bg-white/20" aria-label="Cerrar notas">
+              <X size={19} />
+            </button>
+          </div>
+        </header>
+
+        <div className={`min-h-0 flex-1 ${isEditing ? 'grid grid-rows-2 overflow-hidden lg:grid-cols-2 lg:grid-rows-1' : 'overflow-y-auto'}`}>
+          {isEditing && (
+            <section className="flex min-h-0 flex-col border-b border-orange-200 bg-white lg:border-b-0 lg:border-r">
+              <div className="shrink-0 border-b border-orange-100 px-6 py-5 sm:px-8">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">Editor de contenido</p>
+                <h3 className="mt-1 text-xl font-black text-orange-950">Edita el texto y comprueba el resultado</h3>
+                <p className="mt-1 text-sm text-orange-600">Usa títulos numerados y líneas con guion para mantener la estructura visual.</p>
+              </div>
+              <textarea
+                value={draftNotes}
+                onChange={(event) => setDraftNotes(event.target.value)}
+                className="min-h-0 flex-1 resize-none bg-[#fffdfb] p-6 font-mono text-sm leading-7 text-orange-950 outline-none sm:p-8"
+                aria-label="Contenido de las notas"
+                spellCheck="true"
+              />
+            </section>
+          )}
+
+          <div className={`${isEditing ? 'min-h-0 overflow-y-auto bg-[#fffaf7]' : 'contents'}`}>
+            {isEditing && (
+              <div className="sticky top-0 z-10 border-b border-orange-100 bg-[#fffaf7]/95 px-6 py-4 backdrop-blur sm:px-8">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">Vista previa en tiempo real</p>
+              </div>
+            )}
+            <div className="px-5 py-7 sm:px-10 sm:py-9">
+            {noteSections.length ? (
+              <div className="mx-auto max-w-[1380px]">
+              {hasPartA && (
+                <nav className="mb-8 inline-flex rounded-2xl border border-orange-200 bg-white p-1.5 shadow-sm" aria-label="Contenido de las notas">
+                  <button
+                    type="button"
+                    onClick={() => setActiveNotesView('partA')}
+                    className={`cursor-pointer rounded-xl px-5 py-3 text-sm font-black transition ${activeNotesView === 'partA' ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm' : 'text-orange-700 hover:bg-orange-50'}`}
+                  >
+                    Estado Part A
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveNotesView('tracking')}
+                    className={`cursor-pointer rounded-xl px-5 py-3 text-sm font-black transition ${activeNotesView === 'tracking' ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm' : 'text-orange-700 hover:bg-orange-50'}`}
+                  >
+                    Seguimiento general
+                  </button>
+                </nav>
+              )}
+              {documentLabels.length > 0 && (
+                <div className="mb-7 flex flex-wrap gap-2">
+                  {documentLabels.map((label, index) => (
+                    <span key={`${label}-${index}`} className="rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-orange-700">{label}</span>
+                  ))}
+                </div>
+              )}
+              <div className="columns-1 gap-6 lg:columns-2">
+                {noteSections.map((section, sectionIndex) => {
+                  const completed = /completad/i.test(section.title);
+                  const pending = /pendient|no proporcionad/i.test(section.title);
+                  const summary = /resumen/i.test(section.title);
+                  const accent = completed
+                    ? 'border-emerald-200 bg-emerald-50/35'
+                    : pending
+                      ? 'border-amber-200 bg-amber-50/40'
+                      : 'border-orange-100 bg-white';
+                  return (
+                    <section key={`${section.title}-${sectionIndex}`} className={`mb-6 inline-block w-full break-inside-avoid overflow-hidden rounded-[26px] border align-top shadow-sm ${accent} ${summary ? '[column-span:all]' : ''}`}>
+                      <div className="flex items-center gap-4 border-b border-current/10 px-6 py-5 sm:px-7">
+                        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-sm font-black ${completed ? 'bg-emerald-500 text-white' : pending ? 'bg-amber-400 text-amber-950' : 'bg-orange-100 text-orange-700'}`}>
+                          {completed ? <CheckSquare size={20} /> : String(sectionIndex + 1).padStart(2, '0')}
+                        </span>
+                        <h3 className="text-lg font-black leading-tight text-orange-950 sm:text-xl">{section.title}</h3>
+                      </div>
+                      <div className={`px-6 py-3 sm:px-7 ${summary ? 'md:grid md:grid-cols-2 md:gap-x-8' : ''}`}>
+                        {section.items.map((item, itemIndex) => {
+                          const isBullet = /^[-·•]\s*/.test(item);
+                          return (
+                            <div key={`${item}-${itemIndex}`} className="flex gap-3 border-b border-orange-900/10 py-4 text-base leading-7 text-[#653123] last:border-b-0">
+                              {isBullet && <span className={`mt-2.5 h-2 w-2 shrink-0 rounded-full ${completed ? 'bg-emerald-500' : pending ? 'bg-amber-500' : 'bg-orange-500'}`} />}
+                              <p className="whitespace-pre-wrap">{isBullet ? item.replace(/^[-·•]\s*/, '') : item}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+              </div>
+            ) : (
+              <div className="grid min-h-64 place-items-center rounded-3xl border border-dashed border-orange-200 bg-white text-center">
+                <div><FileText className="mx-auto h-8 w-8 text-orange-300" /><p className="mt-3 font-bold text-orange-950">Todavía no hay notas</p></div>
+              </div>
+            )}
+            </div>
+          </div>
+        </div>
+
+        <footer className="flex flex-col gap-3 border-t border-orange-100 bg-white px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-9">
+          <div>
+            <p className="text-xs text-orange-500">Contenido compartido con las personas del portal.</p>
+            {saveError && <p className="mt-1 text-xs font-bold text-red-600">{saveError}</p>}
+          </div>
+          <div className="flex gap-3">
+            {isEditing ? (
+              <>
+                <button type="button" onClick={() => { setDraftNotes(proposal.notas || ''); setSaveError(''); setIsEditing(false); }} disabled={isSaving} className="cursor-pointer rounded-xl border border-orange-200 px-5 py-2.5 text-sm font-bold text-orange-800 transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50">Cancelar</button>
+                <button type="button" onClick={handleSave} disabled={isSaving} className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"><CheckSquare size={16} /> {isSaving ? 'Guardando...' : 'Guardar cambios'}</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={onClose} className="cursor-pointer rounded-xl border border-orange-200 px-5 py-2.5 text-sm font-bold text-orange-800 transition hover:bg-orange-50">Cerrar</button>
+                <button type="button" onClick={() => { setDraftNotes(proposal.notas || ''); setSaveError(''); setIsEditing(true); }} className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5"><SquarePen size={16} /> Editar contenido</button>
+              </>
+            )}
+          </div>
+        </footer>
+      </motion.article>
+    </motion.div>
+  );
+};
 
 const TablePagination = ({ pagination, onPageChange }) => {
   const currentPage = pagination?.page || 1;

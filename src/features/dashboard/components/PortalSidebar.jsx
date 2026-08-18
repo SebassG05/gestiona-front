@@ -296,21 +296,6 @@ const PortalSidebar = ({ children }) => {
         </nav>
 
         <div className="space-y-3 border-t border-orange-100 p-4">
-          <AnimatePresence initial={false}>
-            {isOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="rounded-2xl border border-orange-100 bg-orange-50/70 p-4"
-              >
-                <p className="text-sm font-semibold text-orange-950">Portal activo</p>
-                <p className="mt-1 truncate text-xs text-orange-500">{portalId}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           <Link
             to="/dashboard"
             className={`flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-orange-900 transition hover:bg-orange-50 hover:text-orange-600 ${
