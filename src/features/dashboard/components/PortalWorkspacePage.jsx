@@ -115,7 +115,7 @@ const StaticBelowFoldContent = ({ portalId, portalName }) => {
   );
 };
 
-const BelowFoldContent = ({ portalId, portalName }) => {
+export const HorizontalStoryArchive = ({ portalId, portalName }) => {
   const journeyRef = useRef(null);
   const prefersReducedMotion = useReducedMotion();
   const { scrollYProgress } = useScroll({
@@ -273,6 +273,69 @@ const BelowFoldContent = ({ portalId, portalName }) => {
           <p className="mx-auto mt-14 max-w-2xl text-lg leading-8 text-[#89503e]">Un espacio diseñado para que la información no termine archivada, sino convertida en criterio, colaboración y avance.</p>
           <Link to={`/dashboard/portal/${portalId}/opportunities`} className="mt-9 inline-flex cursor-pointer items-center rounded-full bg-gradient-to-r from-orange-500 to-red-500 px-8 py-4 text-sm font-black text-white shadow-xl transition hover:-translate-y-1 hover:shadow-2xl">Entrar en oportunidades <ArrowRight className="ml-2 h-4 w-4" /></Link>
         </div>
+      </section>
+    </div>
+  );
+};
+
+const BelowFoldContent = ({ portalId, portalName }) => {
+  const modules = [
+    { icon: BriefcaseBusiness, number: '01', title: 'Oportunidades', text: 'Detecta convocatorias, prioriza las decisivas y construye una biblioteca compartida.', path: 'opportunities', className: 'lg:col-span-7 lg:row-span-2 bg-gradient-to-br from-[#ff5a00] to-[#ff334f] text-white' },
+    { icon: FilePenLine, number: '02', title: 'Propuestas', text: 'Convierte una señal prometedora en una propuesta trazable.', path: 'proposals', className: 'lg:col-span-5 bg-[#421307] text-white' },
+    { icon: Users, number: '03', title: 'Equipo', text: 'Personas, responsabilidades y conocimiento en un mismo pulso.', path: 'team', className: 'lg:col-span-5 bg-[#ffe7d6] text-[#48160a]' },
+    { icon: BarChart3, number: '04', title: 'Análisis', text: 'Lee el estado real del portal antes de tomar la siguiente decisión.', path: 'analytics', className: 'lg:col-span-12 bg-white text-[#48160a]' },
+  ];
+  const stages = [
+    ['Explorar', 'Reúne oportunidades y convierte el ruido en una selección con criterio.'],
+    ['Conectar', 'Relaciona cada oportunidad con contactos, Concept Notes y responsables.'],
+    ['Construir', 'Transforma la información compartida en una propuesta preparada para avanzar.'],
+    ['Decidir', 'Consulta el progreso del portal y actúa con una visión común.'],
+  ];
+
+  return (
+    <div className="overflow-hidden bg-[#fff9f5] text-[#48160a]">
+      <section className="relative px-5 py-24 sm:px-8 lg:px-12 lg:py-32">
+        <div className="pointer-events-none absolute left-[-8rem] top-24 h-80 w-80 rounded-full border border-orange-200/70" />
+        <div className="mx-auto max-w-[1500px]">
+          <motion.div initial={{ opacity: 0, y: 36 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: .35 }} transition={{ duration: .65 }} className="grid gap-8 lg:grid-cols-[.7fr_1.3fr] lg:items-end">
+            <p className="text-xs font-black uppercase tracking-[0.26em] text-orange-500">El portal, en movimiento</p>
+            <h2 className="text-[clamp(2.8rem,6vw,6.8rem)] font-black leading-[.88] tracking-[-.06em]">Un tablero que convierte información en avance.</h2>
+          </motion.div>
+
+          <div className="mt-16 grid auto-rows-[minmax(250px,auto)] gap-5 lg:grid-cols-12">
+            {modules.map(({ icon: Icon, number, title, text, path, className }, index) => (
+              <motion.article key={title} initial={{ opacity: 0, y: 55, rotate: index % 2 ? 1.5 : -1.5 }} whileInView={{ opacity: 1, y: 0, rotate: 0 }} viewport={{ once: true, amount: .2 }} transition={{ duration: .6, delay: index * .08, ease: [0.22, 1, 0.36, 1] }} whileHover={{ y: -7 }} className={`group relative isolate overflow-hidden rounded-[34px] border border-orange-950/10 p-7 shadow-[0_20px_60px_rgba(95,28,8,.08)] sm:p-9 ${className}`}>
+                <div className="pointer-events-none absolute -right-16 -top-20 -z-10 h-64 w-64 rounded-full border border-current opacity-10 transition duration-700 group-hover:scale-125" />
+                <div className="flex items-start justify-between gap-6"><span className="grid h-14 w-14 place-items-center rounded-2xl border border-current/10 bg-white/15 backdrop-blur"><Icon size={25}/></span><span className="text-6xl font-black opacity-10 sm:text-8xl">{number}</span></div>
+                <div className="mt-12 max-w-2xl"><h3 className="text-3xl font-black sm:text-4xl">{title}</h3><p className="mt-4 max-w-xl text-base leading-7 opacity-75">{text}</p><Link to={`/dashboard/portal/${portalId}/${path}`} className="mt-7 inline-flex cursor-pointer items-center gap-2 rounded-full border border-current/20 px-5 py-3 text-sm font-black transition hover:bg-white hover:text-orange-700">Abrir módulo <ArrowRight size={16} className="transition group-hover:translate-x-1"/></Link></div>
+              </motion.article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="relative border-y border-orange-100 bg-white px-5 py-24 sm:px-8 lg:px-12 lg:py-32">
+        <div className="mx-auto grid max-w-[1500px] gap-14 lg:grid-cols-[.75fr_1.25fr]">
+          <div className="lg:sticky lg:top-24 lg:self-start">
+            <span className="text-xs font-black uppercase tracking-[0.26em] text-rose-500">Una ruta, no un laberinto</span>
+            <h2 className="mt-5 text-4xl font-black leading-[.95] tracking-[-.04em] sm:text-6xl">Cada paso deja preparado el siguiente.</h2>
+            <p className="mt-6 max-w-lg text-lg leading-8 text-[#8b4b38]">El contexto permanece unido mientras el trabajo cambia de fase. Nada empieza de cero.</p>
+          </div>
+          <div className="divide-y divide-orange-100 border-y border-orange-100">
+            {stages.map(([title, text], index) => (
+              <motion.div key={title} initial={{ opacity: 0, x: 50 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true, amount: .5 }} transition={{ duration: .55, delay: index * .06 }} className="group grid gap-5 py-9 sm:grid-cols-[90px_1fr] sm:items-start sm:py-12">
+                <span className="text-5xl font-black text-orange-200 transition group-hover:text-orange-500">0{index + 1}</span><div><h3 className="text-2xl font-black sm:text-3xl">{title}</h3><p className="mt-3 max-w-2xl text-base leading-7 text-[#8b4b38]">{text}</p></div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-24 sm:px-8 lg:px-12 lg:py-32">
+        <motion.div initial={{ opacity: 0, scale: .96 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true, amount: .35 }} transition={{ duration: .7 }} className="relative mx-auto max-w-[1500px] overflow-hidden rounded-[42px] bg-gradient-to-r from-[#ff6100] via-[#ff4427] to-[#f51f55] p-8 text-white shadow-[0_35px_100px_rgba(249,70,40,.24)] sm:p-12 lg:p-16">
+          <div className="pointer-events-none absolute -right-20 -top-28 h-96 w-96 rounded-full border-[42px] border-white/10" />
+          <div className="relative grid gap-10 lg:grid-cols-[1fr_auto] lg:items-end"><div className="max-w-4xl"><p className="text-xs font-black uppercase tracking-[.26em] text-orange-100">Continúa en {portalName}</p><h2 className="mt-5 text-4xl font-black leading-[.95] tracking-[-.04em] sm:text-6xl">La próxima decisión ya tiene contexto.</h2><p className="mt-6 max-w-2xl text-lg leading-8 text-white/80">Entra en las oportunidades priorizadas o consulta la visión global del trabajo.</p></div><div className="flex flex-wrap gap-3"><Link to={`/dashboard/portal/${portalId}/opportunities`} className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-6 py-4 text-sm font-black text-orange-700 shadow-lg transition hover:-translate-y-1">Oportunidades <ArrowRight size={17}/></Link><Link to={`/dashboard/portal/${portalId}/analytics`} className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/35 bg-white/10 px-6 py-4 text-sm font-black backdrop-blur transition hover:-translate-y-1 hover:bg-white/20">Ver análisis</Link></div></div>
+        </motion.div>
       </section>
     </div>
   );
