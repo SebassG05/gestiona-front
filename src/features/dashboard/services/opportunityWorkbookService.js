@@ -113,6 +113,19 @@ export const unlinkContactFromOpportunityRow = async ({ portalId, workbookId, li
   return response.data;
 };
 
+export const updateLinkedContactTracking = async ({
+  portalId,
+  workbookId,
+  linkId,
+  tracking,
+}) => {
+  const response = await api.patch(
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/contacts/linked/${encodeURIComponent(linkId)}/tracking`,
+    { tracking }
+  );
+  return response.data;
+};
+
 export const promoteOpportunitiesToProposals = async ({ portalId, rowIds }) => {
   const response = await api.post(`${workbookPath(portalId)}/promote-to-proposals`, { rowIds });
   return response.data;

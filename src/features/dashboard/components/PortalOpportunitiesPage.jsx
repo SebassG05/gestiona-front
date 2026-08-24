@@ -4,6 +4,7 @@ import readXlsxFile from 'read-excel-file/browser';
 import {
   AlertCircle,
   BriefcaseBusiness,
+  CalendarDays,
   CheckCircle2,
   CheckSquare,
   ChevronDown,
@@ -17,7 +18,10 @@ import {
   FileSpreadsheet,
   Plus,
   Loader2,
+  Mail,
+  MessageSquare,
   Search,
+  Save,
   Sheet,
   Square,
   Star,
@@ -40,6 +44,7 @@ import {
   promoteOpportunitiesToProposals,
   searchOpportunityWorkbooks,
   unlinkContactFromOpportunityRow,
+  updateLinkedContactTracking,
   updateOpportunityWorkbookRow,
 } from '../services/opportunityWorkbookService.js';
 import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
@@ -1027,6 +1032,32 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     } finally {
       setUnlinkingContactId('');
     }
+  };
+
+  const saveLinkedContactTracking = async (linkId, tracking) => {
+    if (!linkedContactsModal?.workbookId || !linkId) return null;
+
+    const response = await updateLinkedContactTracking({
+      portalId,
+      workbookId: linkedContactsModal.workbookId,
+      linkId,
+      tracking,
+    });
+    const updatedLink = response.data;
+
+    setLinkedContacts((currentContacts) =>
+      currentContacts.map((contactLink) =>
+        contactLink.id === linkId
+          ? {
+              ...contactLink,
+              tracking: updatedLink.tracking || {},
+              trackingUpdatedAt: updatedLink.trackingUpdatedAt,
+            }
+          : contactLink
+      )
+    );
+
+    return updatedLink;
   };
 
   const linkSearchContactToCurrentOpportunity = async (contactRow) => {
@@ -2537,6 +2568,8 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               isAddingContacts={isAddingLinkedContacts}
               onCancel={closeLinkedContactsModal}
               onUnlink={unlinkLinkedContact}
+              onSaveTracking={saveLinkedContactTracking}
+              onOpenCalendar={() => navigate(`/dashboard/portal/${portalId}/team`)}
             />
           )}
         </AnimatePresence>
@@ -3166,12 +3199,15 @@ const LinkedContactsModal = ({
   isAddingContacts,
   onCancel,
   onUnlink,
+  onSaveTracking,
+  onOpenCalendar,
 }) => {
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [newContact, setNewContact] = useState({ name: '', email: '', entity: '', role: '' });
   const linkedContactsTableRef = useRef(null);
   const linkedContactsDragRef = useRef({ startX: 0, scrollLeft: 0 });
   const [isLinkedContactsDragging, setIsLinkedContactsDragging] = useState(false);
+  const [trackingLink, setTrackingLink] = useState(null);
 
   const startLinkedContactsDrag = (event) => {
     if (event.button !== 0 || event.target.closest('button, a, input, select, textarea, [role="button"]')) return;
@@ -3420,6 +3456,9 @@ const LinkedContactsModal = ({
                         Gestion
                       </th>
                       <th className="border border-orange-200 px-4 py-3 text-left">
+                        Seguimiento
+                      </th>
+                      <th className="border border-orange-200 px-4 py-3 text-left">
                         Origen
                       </th>
                       {columns.map((column) => (
@@ -3433,7 +3472,16 @@ const LinkedContactsModal = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {contacts.map(({ id, contact }, index) => (
+                    {contacts.map((contactLink, index) => {
+                      const { id, contact } = contactLink;
+                      const tracking = contactLink.tracking || {};
+                      const completedSteps = [
+                        tracking.emailSent,
+                        tracking.responseReceived,
+                        tracking.meetingScheduled,
+                      ].filter(Boolean).length;
+
+                      return (
                       <tr
                         key={id}
                         className={index % 2 === 0 ? 'bg-orange-50/35' : 'bg-white'}
@@ -3450,6 +3498,22 @@ const LinkedContactsModal = ({
                             <Trash2 size={14} />
                             {unlinkingContactId === id ? 'Quitando...' : 'Quitar'}
                           </button>
+                          </div>
+                        </td>
+                        <td className="min-w-44 border border-orange-100 px-4 py-3 align-middle">
+                          <button
+                            type="button"
+                            onClick={() => setTrackingLink(contactLink)}
+                            className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-semibold text-orange-700 shadow-sm transition hover:bg-orange-50"
+                            title="Ver y editar el seguimiento de este contacto"
+                          >
+                            <Mail size={15} />
+                            {completedSteps ? `${completedSteps}/3 completado` : 'Seguimiento'}
+                          </button>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {tracking.emailSent && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">Correo enviado</span>}
+                            {tracking.responseReceived && <span className="rounded-full bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700">Con respuesta</span>}
+                            {tracking.meetingScheduled && <span className="rounded-full bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">Reunión</span>}
                           </div>
                         </td>
                         <td className="min-w-52 border border-orange-100 px-4 py-3 align-top">
@@ -3470,7 +3534,8 @@ const LinkedContactsModal = ({
                           </td>
                         ))}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -3486,7 +3551,232 @@ const LinkedContactsModal = ({
             </div>
           )}
         </div>
+        <AnimatePresence>
+          {trackingLink && (
+            <ContactTrackingPanel
+              contactLink={trackingLink}
+              onCancel={() => setTrackingLink(null)}
+              onSave={onSaveTracking}
+              onOpenCalendar={onOpenCalendar}
+            />
+          )}
+        </AnimatePresence>
       </motion.div>
+    </motion.div>
+  );
+};
+
+const toDateTimeLocalValue = (value) => {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return '';
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+};
+
+const buildContactTrackingDraft = (tracking = {}) => ({
+  emailSent: Boolean(tracking.emailSent),
+  responseReceived: Boolean(tracking.responseReceived),
+  responseNote: tracking.responseNote || '',
+  meetingScheduled: Boolean(tracking.meetingScheduled),
+  meetingAt: tracking.meetingAt ? toDateTimeLocalValue(tracking.meetingAt) : '',
+  meetingTitle: tracking.meetingTitle || '',
+  meetingNote: tracking.meetingNote || '',
+  meetingActivityId: tracking.meetingActivityId || '',
+});
+
+const ContactTrackingCheckCard = ({
+  active,
+  onToggle,
+  icon: Icon,
+  title,
+  description,
+  accent,
+  disabled,
+  children,
+}) => (
+  <section className={`rounded-2xl border bg-white p-5 shadow-sm ${active ? accent : 'border-orange-100'}`}>
+    <label className="flex cursor-pointer items-start gap-4">
+      <input
+        type="checkbox"
+        checked={active}
+        onChange={(event) => onToggle(event.target.checked)}
+        disabled={disabled}
+        className="mt-1 h-5 w-5 accent-orange-500"
+      />
+      <span>
+        <span className="flex items-center gap-2 text-base font-semibold text-orange-950">
+          <Icon size={18} className={active ? 'text-orange-500' : 'text-orange-300'} />
+          {title}
+        </span>
+        <span className="mt-1 block text-sm leading-6 text-orange-500">{description}</span>
+      </span>
+    </label>
+    {active && children}
+  </section>
+);
+
+const ContactTrackingPanel = ({ contactLink, onCancel, onSave, onOpenCalendar }) => {
+  const contact = contactLink.contact || {};
+  const [form, setForm] = useState(() => buildContactTrackingDraft(contactLink.tracking));
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const getValue = (names) => {
+    const normalizedNames = names.map(normalizeHeader);
+    const index = (contact.headers || []).findIndex((header) =>
+      normalizedNames.includes(normalizeHeader(header))
+    );
+    return index >= 0 ? displayCell(contact.values?.[index]) : '';
+  };
+  const contactName =
+    getValue(['nombre y apellidos', 'nombre', 'name']) ||
+    displayCell((contact.values || []).find(isFilled)) ||
+    'Contacto';
+  const contactEmail = getValue(['contacto', 'email', 'e-mail', 'mail', 'correo']);
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrorMessage('');
+  };
+
+  const saveTracking = async () => {
+    if (form.meetingScheduled && !form.meetingAt) {
+      setErrorMessage('Indica la fecha y la hora de la reunión.');
+      return;
+    }
+    setIsSaving(true);
+    setErrorMessage('');
+    try {
+      await onSave(contactLink.id, {
+        emailSent: form.emailSent,
+        responseReceived: form.responseReceived,
+        responseNote: form.responseReceived ? form.responseNote.trim() : '',
+        meetingScheduled: form.meetingScheduled,
+        meetingAt: form.meetingScheduled ? new Date(form.meetingAt).toISOString() : null,
+        meetingTitle: form.meetingScheduled ? form.meetingTitle.trim() : '',
+        meetingNote: form.meetingScheduled ? form.meetingNote.trim() : '',
+      });
+      onCancel();
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'No se pudo guardar el seguimiento.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[70] flex justify-end bg-orange-950/35 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isSaving) onCancel();
+      }}
+    >
+      <motion.section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contact-tracking-title"
+        initial={{ x: 70, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 70, opacity: 0 }}
+        className="flex h-full w-full max-w-2xl flex-col border-l border-orange-100 bg-white shadow-2xl"
+      >
+        <header className="border-b border-orange-100 bg-gradient-to-br from-orange-50 via-white to-rose-50 px-5 py-5 sm:px-7">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-rose-500">
+                <CheckSquare size={15} /> Seguimiento del contacto
+              </p>
+              <h3 id="contact-tracking-title" className="mt-2 truncate text-2xl font-semibold text-orange-950">{contactName}</h3>
+              <p className="mt-1 truncate text-sm text-orange-600">{contactEmail || 'Sin email registrado'}</p>
+            </div>
+            <button type="button" onClick={onCancel} disabled={isSaving} className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-xl border border-orange-100 bg-white text-orange-700 shadow-sm disabled:opacity-50" aria-label="Cerrar seguimiento">
+              <X size={19} />
+            </button>
+          </div>
+          <p className="mt-4 text-sm leading-6 text-orange-600">
+            Marca los avances de la conversación sin guardar el contenido de los correos.
+          </p>
+        </header>
+
+        <div className="gestiona-scrollbar flex-1 overflow-y-auto bg-orange-50/25 px-5 py-5 sm:px-7">
+          {errorMessage && <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{errorMessage}</div>}
+          <div className="space-y-4">
+            <ContactTrackingCheckCard
+              active={form.emailSent}
+              onToggle={(value) => updateField('emailSent', value)}
+              icon={Mail}
+              title="Correo enviado"
+              description="Marca este check cuando hayas enviado el correo al investigador."
+              accent="border-emerald-200"
+              disabled={isSaving}
+            />
+
+            <ContactTrackingCheckCard
+              active={form.responseReceived}
+              onToggle={(value) => updateField('responseReceived', value)}
+              icon={MessageSquare}
+              title="Respuesta recibida"
+              description="Actívalo cuando el contacto haya respondido."
+              accent="border-sky-200"
+              disabled={isSaving}
+            >
+              <label className="mt-4 grid gap-1.5 text-xs font-semibold text-orange-700">
+                Nota sobre la respuesta
+                <textarea
+                  value={form.responseNote}
+                  onChange={(event) => updateField('responseNote', event.target.value)}
+                  disabled={isSaving}
+                  maxLength={4000}
+                  rows={5}
+                  placeholder="Ej. Está interesado, pide más información o no puede participar..."
+                  className="resize-y rounded-xl border border-sky-100 bg-sky-50/25 px-4 py-3 text-sm font-normal leading-6 text-orange-950 outline-none focus:border-sky-400"
+                />
+              </label>
+            </ContactTrackingCheckCard>
+
+            <ContactTrackingCheckCard
+              active={form.meetingScheduled}
+              onToggle={(value) => updateField('meetingScheduled', value)}
+              icon={CalendarDays}
+              title="Reunión agendada"
+              description="Al guardar, aparecerá automáticamente en el calendario de Equipo."
+              accent="border-violet-200"
+              disabled={isSaving}
+            >
+              <div className="mt-4 grid gap-4">
+                <label className="grid gap-1.5 text-xs font-semibold text-orange-700">
+                  Fecha y hora
+                  <input type="datetime-local" value={form.meetingAt} onChange={(event) => updateField('meetingAt', event.target.value)} disabled={isSaving} className="rounded-xl border border-violet-100 bg-violet-50/25 px-4 py-3 text-sm font-normal text-orange-950 outline-none focus:border-violet-400" />
+                </label>
+                <label className="grid gap-1.5 text-xs font-semibold text-orange-700">
+                  Título de la reunión
+                  <input value={form.meetingTitle} onChange={(event) => updateField('meetingTitle', event.target.value)} disabled={isSaving} maxLength={140} placeholder={`Reunión con ${contactName}`} className="rounded-xl border border-violet-100 bg-violet-50/25 px-4 py-3 text-sm font-normal text-orange-950 outline-none focus:border-violet-400" />
+                </label>
+                <label className="grid gap-1.5 text-xs font-semibold text-orange-700">
+                  Notas de la reunión
+                  <textarea value={form.meetingNote} onChange={(event) => updateField('meetingNote', event.target.value)} disabled={isSaving} maxLength={1200} rows={3} placeholder="Objetivo, enlace de videollamada o información útil..." className="resize-y rounded-xl border border-violet-100 bg-violet-50/25 px-4 py-3 text-sm font-normal leading-6 text-orange-950 outline-none focus:border-violet-400" />
+                </label>
+                {form.meetingActivityId && (
+                  <button type="button" onClick={onOpenCalendar} className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50">
+                    <CalendarDays size={16} /> Ver en el calendario
+                  </button>
+                )}
+              </div>
+            </ContactTrackingCheckCard>
+          </div>
+        </div>
+
+        <footer className="flex items-center justify-end gap-3 border-t border-orange-100 bg-white px-5 py-4 sm:px-7">
+          <button type="button" onClick={onCancel} disabled={isSaving} className="cursor-pointer rounded-xl border border-orange-100 bg-white px-4 py-2.5 text-sm font-semibold text-orange-700 disabled:opacity-50">Cancelar</button>
+          <button type="button" onClick={saveTracking} disabled={isSaving} className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50">
+            {isSaving ? <Loader2 size={17} className="animate-spin" /> : <Save size={17} />}
+            {isSaving ? 'Guardando...' : 'Guardar seguimiento'}
+          </button>
+        </footer>
+      </motion.section>
     </motion.div>
   );
 };
