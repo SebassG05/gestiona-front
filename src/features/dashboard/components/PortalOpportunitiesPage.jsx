@@ -46,6 +46,7 @@ import {
   unlinkContactFromOpportunityRow,
   updateLinkedContactTracking,
   updateOpportunityWorkbookRow,
+  updateOpportunityRowNote,
 } from '../services/opportunityWorkbookService.js';
 import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
 import { getPortalMembers } from '../services/portalService.js';
@@ -171,6 +172,13 @@ const getRowValueByHeaderNames = (row, headerNames) => {
     normalizedNames.includes(normalizeHeader(header))
   );
   return index >= 0 ? displayCell(row.values?.[index]) : '';
+};
+
+const getOpportunityNote = (row) => String(row?.opportunityNote || '').trim();
+
+const isCopyableCellValue = (value) => {
+  const normalizedValue = String(value || '').trim();
+  return normalizedValue && normalizedValue !== '-';
 };
 
 const buildOpportunityOption = (row) => {
@@ -546,12 +554,14 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [linkedContactImport, setLinkedContactImport] = useState(null);
   const [contactWorkbookOptions, setContactWorkbookOptions] = useState([]);
   const [selectedOpportunityDetail, setSelectedOpportunityDetail] = useState(null);
+  const [opportunityNoteViewer, setOpportunityNoteViewer] = useState(null);
   const [selectedOpportunityRowIds, setSelectedOpportunityRowIds] = useState([]);
   const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
   const [isPromotingOpportunities, setIsPromotingOpportunities] = useState(false);
   const [promotionError, setPromotionError] = useState('');
   const [favoriteOpportunityIds, setFavoriteOpportunityIds] = useState([]);
   const [focusedOpportunityRowId, setFocusedOpportunityRowId] = useState('');
+  const [savingOpportunityNoteRowId, setSavingOpportunityNoteRowId] = useState('');
   const [isTableDragging, setIsTableDragging] = useState(false);
   const [canDeletePages, setCanDeletePages] = useState(false);
 
@@ -789,7 +799,8 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     const matchingRows = !normalizedSearch ? rows : rows.filter((row) =>
       row.values.some((value) =>
         displayCell(value).toLocaleLowerCase('es').includes(normalizedSearch)
-      )
+      ) ||
+      getOpportunityNote(row).toLocaleLowerCase('es').includes(normalizedSearch)
     );
     if (isContactsLibrary) return matchingRows;
     return pinFavoriteOpportunityGroups(matchingRows, activeWorkbook?.workbook?.headers || [], favoriteOpportunityIds);
@@ -992,6 +1003,70 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       count: Number(count) || 0,
       rows: rowsWithWorkbook,
     });
+  };
+
+  const openOpportunityNoteViewer = ({ rows, count }) => {
+    if (!activeWorkbook?.workbook?._id || !rows?.length) return;
+
+    const rowsWithWorkbook = rows.map((row) => ({
+      ...row,
+      workbook: activeWorkbook.workbook,
+    }));
+    const opportunity = buildOpportunityOption(rowsWithWorkbook[0]);
+
+    setOpportunityNoteViewer({
+      title: opportunity.title,
+      subtitle: opportunity.subtitle,
+      note: getOpportunityNote(rowsWithWorkbook[0]),
+      rows: rowsWithWorkbook,
+      count: Number(count) || 0,
+    });
+  };
+
+  const saveOpportunityNote = async ({ rowId, note }) => {
+    if (!activeWorkbook?.workbook?._id || !rowId || savingOpportunityNoteRowId) return;
+
+    setSavingOpportunityNoteRowId(rowId);
+    setErrorMessage('');
+
+    try {
+      const response = await updateOpportunityRowNote({
+        portalId,
+        workbookId: activeWorkbook.workbook._id,
+        rowId,
+        note,
+      });
+      const updatedRow = response.data;
+      const nextNote = updatedRow?.opportunityNote || '';
+
+      setActiveWorkbook((currentWorkbook) =>
+        currentWorkbook
+          ? {
+              ...currentWorkbook,
+              rows: (currentWorkbook.rows || []).map((row) =>
+                row._id === rowId ? { ...row, opportunityNote: nextNote } : row
+              ),
+            }
+          : currentWorkbook
+      );
+      setSelectedOpportunityDetail((currentDetail) =>
+        currentDetail
+          ? {
+              ...currentDetail,
+              rows: (currentDetail.rows || []).map((row) =>
+                row._id === rowId ? { ...row, opportunityNote: nextNote } : row
+              ),
+            }
+          : currentDetail
+      );
+      setNotice(nextNote ? 'Nota guardada correctamente.' : 'Nota eliminada correctamente.');
+      return nextNote;
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'No se pudo guardar la nota.');
+      throw error;
+    } finally {
+      setSavingOpportunityNoteRowId('');
+    }
   };
 
   const closeLinkedContactsModal = () => {
@@ -1503,6 +1578,18 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     }
   };
 
+  const handleCopyCell = async (value, label = 'celda') => {
+    const text = String(value || '').trim();
+    if (!isCopyableCellValue(text)) return;
+
+    try {
+      await copyTextToClipboard(text);
+      setNotice(`Contenido de ${label} copiado al portapapeles.`);
+    } catch {
+      setErrorMessage('No se pudo copiar la celda. Comprueba los permisos del navegador.');
+    }
+  };
+
   const handleCopyGlobalEmail = async (email) => {
     try {
       await copyTextToClipboard(email);
@@ -1613,7 +1700,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   };
   const tableMinWidth = Math.max(
     900,
-    visibleColumns.length * 220 + (isContactsLibrary ? 136 : 160)
+    visibleColumns.length * 220 + (isContactsLibrary ? 136 : 480)
   );
   const normalizedGlobalSearch = globalSearchValue.trim();
   const shouldShowGlobalSearch = normalizedGlobalSearch.length >= 2;
@@ -2216,6 +2303,11 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                 </th>
                                   ))}
                               {!isContactsLibrary && (
+                                <th className="w-80 border border-white/25 px-4 py-3">
+                                  Notas
+                                </th>
+                              )}
+                              {!isContactsLibrary && (
                                 <th className="w-40 border border-white/25 px-4 py-3">
                                   Contactos
                                 </th>
@@ -2338,7 +2430,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                       <td
                                         key={`${row._id}-${column.header}`}
                                         rowSpan={rowSpan}
-                                        className={`whitespace-pre-line break-words border border-orange-100 px-4 py-3 align-middle leading-5 ${
+                                        className={`group/cell relative whitespace-pre-line break-words border border-orange-100 px-4 py-3 pb-9 align-middle leading-5 ${
                                           isMergedColumn && rowSpan > 1
                                             ? 'font-semibold italic text-orange-950'
                                             : ''
@@ -2366,9 +2458,66 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                                         ) : (
                                           value
                                         )}
+                                        <CopyCellButton
+                                          value={value}
+                                          label={column.header}
+                                          onCopy={handleCopyCell}
+                                        />
                                       </td>
                                     );
                                   })}
+                                  {!isContactsLibrary &&
+                                    !mergedTable.contactHiddenRows.has(rowIndex) && (
+                                      <td
+                                        rowSpan={mergedTable.contactSpanByRow.get(rowIndex) || 1}
+                                        className="group/cell relative border border-orange-100 px-4 py-4 pb-10 align-middle"
+                                      >
+                                        {(() => {
+                                          const rowSpan =
+                                            mergedTable.contactSpanByRow.get(rowIndex) || 1;
+                                          const groupedRows = filteredRows.slice(
+                                            rowIndex,
+                                            rowIndex + rowSpan
+                                          );
+                                          const contactCount =
+                                            mergedTable.contactCountByRow.get(rowIndex) || 0;
+                                          const note = getOpportunityNote(groupedRows[0]);
+
+                                          return (
+                                            <>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  openOpportunityNoteViewer({
+                                                    rows: groupedRows,
+                                                    count: contactCount,
+                                                  })
+                                                }
+                                                className={`mx-auto flex min-h-24 w-full cursor-pointer flex-col justify-center rounded-2xl border px-4 py-3 text-left shadow-sm transition hover:border-orange-300 hover:bg-white hover:shadow-md ${
+                                                  note
+                                                    ? 'border-amber-200 bg-amber-50/65 text-orange-950'
+                                                    : 'border-dashed border-orange-200 bg-white/75 text-orange-400'
+                                                }`}
+                                                title={note || 'Anadir nota'}
+                                              >
+                                                <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wide text-orange-500">
+                                                  <MessageSquare size={15} />
+                                                  {note ? 'Nota guardada' : 'Sin nota'}
+                                                </span>
+                                                <span className="mt-2 line-clamp-4 text-sm font-semibold leading-5">
+                                                  {note || 'Anadir una nota visible para este topic'}
+                                                </span>
+                                              </button>
+                                              <CopyCellButton
+                                                value={note}
+                                                label="nota"
+                                                onCopy={handleCopyCell}
+                                              />
+                                            </>
+                                          );
+                                        })()}
+                                      </td>
+                                    )}
                                   {!isContactsLibrary &&
                                     !mergedTable.contactHiddenRows.has(rowIndex) && (
                                       <td
@@ -2464,6 +2613,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                             })
                           }
                           onOpenConceptNote={() => navigate(`/dashboard/portal/${portalId}/opportunities/${activeWorkbook.workbook._id}/${selectedOpportunityDetail.rows[0]._id}/concept-note`)}
+                          onCopyCell={handleCopyCell}
                         />
                       )}
                     </AnimatePresence>
@@ -2473,6 +2623,28 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
             )}
           </section>
         </motion.main>
+
+        <AnimatePresence>
+          {opportunityNoteViewer && (
+            <OpportunityNoteFullView
+              title={opportunityNoteViewer.title}
+              subtitle={opportunityNoteViewer.subtitle}
+              note={opportunityNoteViewer.note}
+              isSaving={savingOpportunityNoteRowId === opportunityNoteViewer.rows[0]?._id}
+              onClose={() => setOpportunityNoteViewer(null)}
+              onSave={async (note) => {
+                const nextNote = await saveOpportunityNote({
+                  rowId: opportunityNoteViewer.rows[0]._id,
+                  note,
+                });
+                setOpportunityNoteViewer((currentViewer) =>
+                  currentViewer ? { ...currentViewer, note: nextNote } : currentViewer
+                );
+                return nextNote;
+              }}
+            />
+          )}
+        </AnimatePresence>
 
         <AnimatePresence>
           {isPromotionModalOpen && (
@@ -2570,6 +2742,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               onUnlink={unlinkLinkedContact}
               onSaveTracking={saveLinkedContactTracking}
               onOpenCalendar={() => navigate(`/dashboard/portal/${portalId}/team`)}
+              onCopyCell={handleCopyCell}
             />
           )}
         </AnimatePresence>
@@ -2674,7 +2847,33 @@ const PromoteOpportunitiesModal = ({
   </motion.div>
 );
 
-const OpportunityTopicDetailPanel = ({ detail, onClose, onOpenContacts, onOpenConceptNote }) => {
+const CopyCellButton = ({ value, label = 'celda', onCopy }) => {
+  if (!isCopyableCellValue(value)) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onCopy?.(value, label);
+      }}
+      className="absolute bottom-2 right-2 grid h-7 w-7 cursor-pointer place-items-center rounded-lg border border-orange-100 bg-white/95 text-orange-500 opacity-0 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-orange-200 group-hover/cell:opacity-100"
+      title={`Copiar ${label}`}
+      aria-label={`Copiar ${label}`}
+    >
+      <Copy size={13} strokeWidth={2.2} />
+    </button>
+  );
+};
+
+const OpportunityTopicDetailPanel = ({
+  detail,
+  onClose,
+  onOpenContacts,
+  onOpenConceptNote,
+  onCopyCell,
+}) => {
   const detailRows = detail.rows
     .map((row) => {
       const cells = opportunityDetailColumnGroups.map((group) => ({
@@ -2762,9 +2961,14 @@ const OpportunityTopicDetailPanel = ({ detail, onClose, onOpenContacts, onOpenCo
                     {row.cells.map((cell) => (
                       <td
                         key={`${row.id}-${cell.label}`}
-                        className="whitespace-pre-line break-words border border-orange-100 px-4 py-4 leading-5"
+                        className="group/cell relative whitespace-pre-line break-words border border-orange-100 px-4 py-4 pb-9 leading-5"
                       >
                         {cell.value}
+                        <CopyCellButton
+                          value={cell.value}
+                          label={cell.label}
+                          onCopy={onCopyCell}
+                        />
                       </td>
                     ))}
                   </tr>
@@ -2784,7 +2988,170 @@ const OpportunityTopicDetailPanel = ({ detail, onClose, onOpenContacts, onOpenCo
           </div>
         )}
       </div>
+
     </motion.aside>
+  );
+};
+
+const OpportunityNoteFullView = ({ title, subtitle, note, isSaving, onClose, onSave }) => {
+  const [draft, setDraft] = useState(note || '');
+  const [isEditing, setIsEditing] = useState(!note);
+  const [notice, setNotice] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const hasChanges = draft.trim() !== String(note || '').trim();
+
+  useEffect(() => {
+    setDraft(note || '');
+    setIsEditing(!note);
+    setNotice('');
+    setErrorMessage('');
+  }, [note]);
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timeout = window.setTimeout(() => setNotice(''), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  const handleSave = async () => {
+    setErrorMessage('');
+    setNotice('');
+    try {
+      await onSave(draft);
+      setIsEditing(false);
+      setNotice(
+        draft.trim()
+          ? 'Nota guardada para esta oportunidad. Ya queda visible en la tabla.'
+          : 'Nota eliminada. La oportunidad queda marcada como sin nota.'
+      );
+    } catch {
+      setErrorMessage('No se pudo guardar la nota. Intentalo de nuevo.');
+    }
+  };
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[90] grid place-items-center bg-orange-950/45 px-4 py-6 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isSaving) onClose();
+      }}
+    >
+      <motion.section
+        role="dialog"
+        aria-modal="true"
+        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-2xl"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-orange-100 bg-gradient-to-br from-orange-50 via-white to-rose-50 px-6 py-5">
+          <div className="min-w-0">
+            <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wide text-orange-500">
+              <MessageSquare size={15} />
+              Nota completa
+            </p>
+            <h3 className="mt-2 line-clamp-2 text-xl font-semibold leading-7 text-orange-950">
+              {title}
+            </h3>
+            {subtitle && (
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-orange-500">
+                {subtitle}
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {isEditing ? (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving || !hasChanges}
+                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 px-5 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600 disabled:cursor-default disabled:opacity-45"
+              >
+                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                {isSaving ? 'Guardando...' : 'Guardar nota'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600"
+              >
+                <Edit3 size={16} />
+                {note ? 'Editar nota' : 'Escribir nota'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-orange-100 bg-white text-orange-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-default disabled:opacity-60"
+              aria-label="Cerrar nota completa"
+              title="Cerrar"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+
+        <AnimatePresence>
+          {notice && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden border-b border-emerald-100 bg-emerald-50"
+            >
+              <div className="flex items-center gap-2 px-6 py-3 text-sm font-semibold text-emerald-700">
+                <CheckCircle2 size={17} />
+                {notice}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {errorMessage && (
+          <div className="flex items-center gap-2 border-b border-red-100 bg-red-50 px-6 py-3 text-sm font-semibold text-red-600">
+            <AlertCircle size={17} />
+            {errorMessage}
+          </div>
+        )}
+
+        <div className="gestiona-scrollbar overflow-y-auto bg-amber-50/25 p-6">
+          {isEditing ? (
+            <div>
+              <div className="mb-3 flex items-center justify-between gap-3 text-xs font-semibold text-orange-500">
+                <span>Editando nota de oportunidad</span>
+                <span>{draft.length}/5000</span>
+              </div>
+              <textarea
+                value={draft}
+                onChange={(event) => {
+                  setDraft(event.target.value.slice(0, 5000));
+                  setNotice('');
+                  setErrorMessage('');
+                }}
+                disabled={isSaving}
+                autoFocus
+                rows={18}
+                placeholder="Ej. Podemos reutilizar el consorcio del proyecto X. Contactar con la universidad Y. Encaja con biochar y monitorizacion de suelos..."
+                className="min-h-[56vh] w-full resize-y rounded-2xl border border-amber-100 bg-white px-6 py-5 text-base leading-8 text-orange-950 outline-none transition placeholder:text-orange-300 focus:border-orange-300 focus:shadow-[0_0_0_4px_rgba(251,146,60,0.12)] disabled:opacity-70"
+              />
+            </div>
+          ) : (
+            <div className={`min-h-[56vh] whitespace-pre-wrap break-words rounded-2xl border px-7 py-6 text-base leading-8 shadow-sm ${
+              note
+                ? 'border-amber-100 bg-white text-orange-950'
+                : 'border-dashed border-orange-200 bg-white/80 text-orange-500'
+            }`}>
+              {note || 'Todavia no hay ninguna nota escrita para esta oportunidad. Pulsa "Escribir nota" para crearla aqui mismo.'}
+            </div>
+          )}
+        </div>
+      </motion.section>
+    </motion.div>
   );
 };
 
@@ -3201,6 +3568,7 @@ const LinkedContactsModal = ({
   onUnlink,
   onSaveTracking,
   onOpenCalendar,
+  onCopyCell,
 }) => {
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [newContact, setNewContact] = useState({ name: '', email: '', entity: '', role: '' });
@@ -3516,7 +3884,7 @@ const LinkedContactsModal = ({
                             {tracking.meetingScheduled && <span className="rounded-full bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">Reunión</span>}
                           </div>
                         </td>
-                        <td className="min-w-52 border border-orange-100 px-4 py-3 align-top">
+                        <td className="group/cell relative min-w-52 border border-orange-100 px-4 py-3 pb-9 align-top">
                           <p className="font-semibold text-orange-950">
                             {contact.workbookName || 'Contactos'}
                           </p>
@@ -3524,15 +3892,33 @@ const LinkedContactsModal = ({
                             {contact.sourceFileName || 'Excel de contactos'}
                             {contact.rowNumber ? ` · Fila ${contact.rowNumber}` : ''}
                           </p>
+                          <CopyCellButton
+                            value={[
+                              contact.workbookName || 'Contactos',
+                              contact.sourceFileName || 'Excel de contactos',
+                              contact.rowNumber ? `Fila ${contact.rowNumber}` : '',
+                            ].filter(Boolean).join(' · ')}
+                            label="origen"
+                            onCopy={onCopyCell}
+                          />
                         </td>
-                        {columns.map((column) => (
-                          <td
-                            key={`${id}-${column.key}`}
-                            className="min-w-44 whitespace-pre-line break-words border border-orange-100 px-4 py-3 align-top leading-5"
-                          >
-                            {getContactColumnValue(contact, column)}
-                          </td>
-                        ))}
+                        {columns.map((column) => {
+                          const value = getContactColumnValue(contact, column);
+
+                          return (
+                            <td
+                              key={`${id}-${column.key}`}
+                              className="group/cell relative min-w-44 whitespace-pre-line break-words border border-orange-100 px-4 py-3 pb-9 align-top leading-5"
+                            >
+                              {value}
+                              <CopyCellButton
+                                value={value}
+                                label={column.label}
+                                onCopy={onCopyCell}
+                              />
+                            </td>
+                          );
+                        })}
                       </tr>
                       );
                     })}

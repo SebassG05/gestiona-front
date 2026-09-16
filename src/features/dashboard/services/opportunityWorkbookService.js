@@ -74,6 +74,14 @@ export const updateOpportunityWorkbookRow = async ({ portalId, workbookId, rowId
   return response.data;
 };
 
+export const updateOpportunityRowNote = async ({ portalId, workbookId, rowId, note }) => {
+  const response = await api.patch(
+    `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}/note`,
+    { note }
+  );
+  return response.data;
+};
+
 export const deleteOpportunityWorkbookRow = async ({ portalId, workbookId, rowId }) => {
   const response = await api.delete(
     `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}/rows/${encodeURIComponent(rowId)}`
