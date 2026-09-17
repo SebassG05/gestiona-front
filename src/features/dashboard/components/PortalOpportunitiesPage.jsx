@@ -672,6 +672,38 @@ const createXlsxBlob = (headers, rows) => {
   ]);
 };
 
+const getWorkbookOrderStorageKey = ({ portalId, category }) =>
+  `gestiona:workbook-order:${portalId}:${category}`;
+
+const applyStoredWorkbookOrder = ({ workbooks, portalId, category }) => {
+  if (!portalId || !workbooks.length) return workbooks;
+
+  try {
+    const storedOrder = JSON.parse(
+      window.localStorage.getItem(getWorkbookOrderStorageKey({ portalId, category })) || '[]'
+    );
+    if (!Array.isArray(storedOrder) || !storedOrder.length) return workbooks;
+
+    const orderIndex = new Map(storedOrder.map((workbookId, index) => [workbookId, index]));
+    return [...workbooks].sort((first, second) => {
+      const firstIndex = orderIndex.has(first._id) ? orderIndex.get(first._id) : Number.MAX_SAFE_INTEGER;
+      const secondIndex = orderIndex.has(second._id) ? orderIndex.get(second._id) : Number.MAX_SAFE_INTEGER;
+      if (firstIndex !== secondIndex) return firstIndex - secondIndex;
+      return new Date(first.createdAt || 0) - new Date(second.createdAt || 0);
+    });
+  } catch {
+    return workbooks;
+  }
+};
+
+const saveStoredWorkbookOrder = ({ portalId, category, workbookIds }) => {
+  if (!portalId || !workbookIds?.length) return;
+  window.localStorage.setItem(
+    getWorkbookOrderStorageKey({ portalId, category }),
+    JSON.stringify(workbookIds)
+  );
+};
+
 const SortableWorkbookTab = ({ workbook, isActive, onSelect }) => {
   const {
     attributes,
@@ -910,7 +942,11 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       const response = await getOpportunityWorkbooks(portalId, {
         category: workbookCategory,
       });
-      const nextWorkbooks = response.data || [];
+      const nextWorkbooks = applyStoredWorkbookOrder({
+        workbooks: response.data || [],
+        portalId,
+        category: workbookCategory,
+      });
       setWorkbooks(nextWorkbooks);
       if (preferredWorkbookId) setWorkbookPage(1);
       const requestedId = preferredWorkbookId || activeWorkbookId || requestedWorkbookId;
@@ -946,7 +982,11 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     getOpportunityWorkbooks(portalId, { category: workbookCategory })
       .then((response) => {
         if (!isMounted) return;
-        const nextWorkbooks = response.data || [];
+        const nextWorkbooks = applyStoredWorkbookOrder({
+          workbooks: response.data || [],
+          portalId,
+          category: workbookCategory,
+        });
         const nextActiveWorkbookId = nextWorkbooks.some((workbook) => workbook._id === requestedWorkbookId)
           ? requestedWorkbookId
           : nextWorkbooks[0]?._id || '';
@@ -1721,19 +1761,39 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
     const previousWorkbooks = workbooks;
     const nextWorkbooks = arrayMove(workbooks, oldIndex, newIndex);
+    const nextWorkbookIds = nextWorkbooks.map((workbook) => workbook._id);
     setWorkbooks(nextWorkbooks);
+    saveStoredWorkbookOrder({
+      portalId,
+      category: workbookCategory,
+      workbookIds: nextWorkbookIds,
+    });
     setIsReorderingWorkbooks(true);
 
     try {
       const response = await reorderOpportunityWorkbooks({
         portalId,
         category: workbookCategory,
-        workbookIds: nextWorkbooks.map((workbook) => workbook._id),
+        workbookIds: nextWorkbookIds,
       });
-      setWorkbooks(response.data || nextWorkbooks);
+      const orderedWorkbooks = applyStoredWorkbookOrder({
+        workbooks: response.data || nextWorkbooks,
+        portalId,
+        category: workbookCategory,
+      });
+      setWorkbooks(orderedWorkbooks);
     } catch (error) {
-      setWorkbooks(previousWorkbooks);
-      setNotice(error.response?.data?.message || 'No se pudo guardar el orden de los Excel.');
+      if (error.response?.status === 404) {
+        setNotice('Orden guardado en este navegador. El servidor aun no tiene activado el guardado global.');
+      } else {
+        setWorkbooks(previousWorkbooks);
+        saveStoredWorkbookOrder({
+          portalId,
+          category: workbookCategory,
+          workbookIds: previousWorkbooks.map((workbook) => workbook._id),
+        });
+        setNotice(error.response?.data?.message || 'No se pudo guardar el orden de los Excel.');
+      }
     } finally {
       setIsReorderingWorkbooks(false);
     }
