@@ -58,7 +58,6 @@ import {
   importOpportunityWorkbook,
   linkContactsToOpportunityRow,
   promoteOpportunitiesToProposals,
-  reorderOpportunityWorkbooks,
   searchOpportunityWorkbooks,
   unlinkContactFromOpportunityRow,
   updateLinkedContactTracking,
@@ -826,7 +825,6 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [workbookPage, setWorkbookPage] = useState(1);
   const [workbookPagination, setWorkbookPagination] = useState(emptyRowsPagination);
   const [workbookReloadKey, setWorkbookReloadKey] = useState(0);
-  const [isReorderingWorkbooks, setIsReorderingWorkbooks] = useState(false);
   const [draggingWorkbookId, setDraggingWorkbookId] = useState('');
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [draftContactFilters, setDraftContactFilters] = useState([{ header: '', value: '' }]);
@@ -1751,15 +1749,14 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     setActiveWorkbookId(workbookId);
   };
 
-  const handleWorkbookDragEnd = async ({ active, over }) => {
+  const handleWorkbookDragEnd = ({ active, over }) => {
     setDraggingWorkbookId('');
-    if (!over || active.id === over.id || isReorderingWorkbooks) return;
+    if (!over || active.id === over.id) return;
 
     const oldIndex = workbooks.findIndex((workbook) => workbook._id === active.id);
     const newIndex = workbooks.findIndex((workbook) => workbook._id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
 
-    const previousWorkbooks = workbooks;
     const nextWorkbooks = arrayMove(workbooks, oldIndex, newIndex);
     const nextWorkbookIds = nextWorkbooks.map((workbook) => workbook._id);
     setWorkbooks(nextWorkbooks);
@@ -1768,35 +1765,6 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       category: workbookCategory,
       workbookIds: nextWorkbookIds,
     });
-    setIsReorderingWorkbooks(true);
-
-    try {
-      const response = await reorderOpportunityWorkbooks({
-        portalId,
-        category: workbookCategory,
-        workbookIds: nextWorkbookIds,
-      });
-      const orderedWorkbooks = applyStoredWorkbookOrder({
-        workbooks: response.data || nextWorkbooks,
-        portalId,
-        category: workbookCategory,
-      });
-      setWorkbooks(orderedWorkbooks);
-    } catch (error) {
-      if (error.response?.status === 404) {
-        setNotice('Orden guardado en este navegador. El servidor aun no tiene activado el guardado global.');
-      } else {
-        setWorkbooks(previousWorkbooks);
-        saveStoredWorkbookOrder({
-          portalId,
-          category: workbookCategory,
-          workbookIds: previousWorkbooks.map((workbook) => workbook._id),
-        });
-        setNotice(error.response?.data?.message || 'No se pudo guardar el orden de los Excel.');
-      }
-    } finally {
-      setIsReorderingWorkbooks(false);
-    }
   };
 
   const updateContactFilter = (index, nextFilter) => {
