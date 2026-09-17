@@ -62,7 +62,6 @@ import {
   unlinkContactFromOpportunityRow,
   updateLinkedContactTracking,
   updateOpportunityWorkbookRow,
-  updateOpportunityRowNote,
 } from '../services/opportunityWorkbookService.js';
 import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
 import { getPortalMembers } from '../services/portalService.js';
@@ -1449,31 +1448,17 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     };
 
     try {
-      const response = await updateOpportunityRowNote({
+      const nextNote = String(note || '').trim().slice(0, 5000);
+      saveStoredOpportunityNote({
         portalId,
         workbookId: activeWorkbook.workbook._id,
         rowId,
-        note,
+        note: nextNote,
       });
-      const updatedRow = response.data;
-      const nextNote = updatedRow?.opportunityNote || '';
-
       applyNoteToState(nextNote);
       setNotice(nextNote ? 'Nota guardada correctamente.' : 'Nota eliminada correctamente.');
       return nextNote;
     } catch (error) {
-      if (error.response?.status === 404) {
-        const nextNote = String(note || '').trim().slice(0, 5000);
-        saveStoredOpportunityNote({
-          portalId,
-          workbookId: activeWorkbook.workbook._id,
-          rowId,
-          note: nextNote,
-        });
-        applyNoteToState(nextNote);
-        setNotice(nextNote ? 'Nota guardada en este navegador.' : 'Nota eliminada.');
-        return nextNote;
-      }
       setErrorMessage(error.response?.data?.message || 'No se pudo guardar la nota.');
       throw error;
     } finally {
