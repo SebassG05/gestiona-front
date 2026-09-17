@@ -1,4 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { AnimatePresence, motion } from 'framer-motion';
 import readXlsxFile from 'read-excel-file/browser';
 import {
@@ -43,6 +58,7 @@ import {
   importOpportunityWorkbook,
   linkContactsToOpportunityRow,
   promoteOpportunitiesToProposals,
+  reorderOpportunityWorkbooks,
   searchOpportunityWorkbooks,
   unlinkContactFromOpportunityRow,
   updateLinkedContactTracking,
@@ -656,6 +672,57 @@ const createXlsxBlob = (headers, rows) => {
   ]);
 };
 
+const SortableWorkbookTab = ({ workbook, isActive, onSelect }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: workbook._id });
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={() => onSelect(workbook._id)}
+      className={`inline-flex cursor-grab touch-none items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm transition active:cursor-grabbing ${
+        isActive
+          ? 'border-orange-300 bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-orange-200'
+          : 'border-orange-100 bg-white text-orange-700 hover:border-orange-300 hover:bg-orange-50'
+      } ${isDragging ? 'relative z-20 opacity-30' : ''}`}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition: transition || 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
+      title="Arrastra para ordenar"
+      {...attributes}
+      {...listeners}
+    >
+      <FileSpreadsheet size={16} />
+      <span className="max-w-64 truncate">{workbook.name}</span>
+      <span
+        className={`rounded-full px-2 py-0.5 text-[11px] ${
+          isActive ? 'bg-white/20 text-white' : 'bg-orange-50 text-orange-500'
+        }`}
+      >
+        {workbook.rowCount || 0}
+      </span>
+    </button>
+  );
+};
+
+const WorkbookTabDragPreview = ({ workbook }) => (
+  <div className="inline-flex cursor-grabbing items-center gap-2 rounded-xl border border-orange-300 bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3 text-sm font-semibold text-white shadow-2xl shadow-orange-200">
+    <FileSpreadsheet size={16} />
+    <span className="max-w-64 truncate">{workbook.name}</span>
+    <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] text-white">
+      {workbook.rowCount || 0}
+    </span>
+  </div>
+);
+
 const libraryCopies = {
   opportunities: {
     category: 'opportunities',
@@ -727,9 +794,18 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [workbookPage, setWorkbookPage] = useState(1);
   const [workbookPagination, setWorkbookPagination] = useState(emptyRowsPagination);
   const [workbookReloadKey, setWorkbookReloadKey] = useState(0);
+  const [isReorderingWorkbooks, setIsReorderingWorkbooks] = useState(false);
+  const [draggingWorkbookId, setDraggingWorkbookId] = useState('');
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [draftContactFilters, setDraftContactFilters] = useState([{ header: '', value: '' }]);
   const [appliedContactFilters, setAppliedContactFilters] = useState([]);
+  const workbookDragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+  const draggingWorkbook = useMemo(
+    () => workbooks.find((workbook) => workbook._id === draggingWorkbookId) || null,
+    [draggingWorkbookId, workbooks]
+  );
   const [rowModal, setRowModal] = useState(null);
   const [rowFormValues, setRowFormValues] = useState([]);
   const [isSavingRow, setIsSavingRow] = useState(false);
@@ -1635,6 +1711,34 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     setActiveWorkbookId(workbookId);
   };
 
+  const handleWorkbookDragEnd = async ({ active, over }) => {
+    setDraggingWorkbookId('');
+    if (!over || active.id === over.id || isReorderingWorkbooks) return;
+
+    const oldIndex = workbooks.findIndex((workbook) => workbook._id === active.id);
+    const newIndex = workbooks.findIndex((workbook) => workbook._id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const previousWorkbooks = workbooks;
+    const nextWorkbooks = arrayMove(workbooks, oldIndex, newIndex);
+    setWorkbooks(nextWorkbooks);
+    setIsReorderingWorkbooks(true);
+
+    try {
+      const response = await reorderOpportunityWorkbooks({
+        portalId,
+        category: workbookCategory,
+        workbookIds: nextWorkbooks.map((workbook) => workbook._id),
+      });
+      setWorkbooks(response.data || nextWorkbooks);
+    } catch (error) {
+      setWorkbooks(previousWorkbooks);
+      setNotice(error.response?.data?.message || 'No se pudo guardar el orden de los Excel.');
+    } finally {
+      setIsReorderingWorkbooks(false);
+    }
+  };
+
   const updateContactFilter = (index, nextFilter) => {
     setDraftContactFilters((currentFilters) =>
       currentFilters.map((filter, filterIndex) =>
@@ -2045,41 +2149,32 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
             )}
 
             <div className="border-b border-orange-100 bg-orange-50/35 px-4 py-3">
-              <div className="gestiona-scrollbar flex items-center gap-2 overflow-x-auto pb-1">
-                {workbooks.map((workbook) => {
-                  const isActive = workbook._id === activeWorkbookId;
-
-                  return (
-                    <button
-                      key={workbook._id}
-                      type="button"
-                      onClick={() => handleWorkbookChange(workbook._id)}
-                      className={`relative flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-                        isActive
-                          ? 'border-orange-300 text-white shadow-sm'
-                          : 'border-orange-100 bg-white text-orange-800 hover:bg-orange-50'
-                      }`}
-                    >
-                      {isActive && (
-                        <motion.span
-                          layoutId="active-opportunity-workbook"
-                          className="absolute inset-0 bg-gradient-to-r from-orange-500 to-red-500"
-                          transition={{ type: 'spring', stiffness: 360, damping: 34 }}
-                        />
-                      )}
-                      <FileSpreadsheet size={16} className="relative z-10" />
-                      <span className="relative z-10 max-w-52 truncate">{workbook.name}</span>
-                      <span
-                        className={`relative z-10 rounded-full px-2 py-0.5 text-[11px] ${
-                          isActive ? 'bg-white/20' : 'bg-orange-50 text-orange-600'
-                        }`}
-                      >
-                        {workbook.rowCount}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <DndContext
+                sensors={workbookDragSensors}
+                collisionDetection={closestCenter}
+                onDragStart={({ active }) => setDraggingWorkbookId(active.id)}
+                onDragEnd={handleWorkbookDragEnd}
+                onDragCancel={() => setDraggingWorkbookId('')}
+              >
+                <SortableContext
+                  items={workbooks.map((workbook) => workbook._id)}
+                  strategy={horizontalListSortingStrategy}
+                >
+                  <div className="gestiona-scrollbar flex items-center gap-2 overflow-x-auto pb-1">
+                    {workbooks.map((workbook) => (
+                      <SortableWorkbookTab
+                        key={workbook._id}
+                        workbook={workbook}
+                        isActive={workbook._id === activeWorkbookId}
+                        onSelect={handleWorkbookChange}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+                <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}>
+                  {draggingWorkbook ? <WorkbookTabDragPreview workbook={draggingWorkbook} /> : null}
+                </DragOverlay>
+              </DndContext>
             </div>
 
             <AnimatePresence initial={false}>

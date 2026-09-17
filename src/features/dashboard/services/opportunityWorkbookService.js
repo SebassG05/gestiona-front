@@ -51,6 +51,14 @@ export const importOpportunityWorkbook = async ({ portalId, data }) => {
   return response.data;
 };
 
+export const reorderOpportunityWorkbooks = async ({ portalId, category, workbookIds }) => {
+  const response = await api.patch(`${workbookPath(portalId)}/reorder`, {
+    category,
+    workbookIds,
+  });
+  return response.data;
+};
+
 export const deleteOpportunityWorkbook = async ({ portalId, workbookId }) => {
   const response = await api.delete(
     `${workbookPath(portalId)}/${encodeURIComponent(workbookId)}`
