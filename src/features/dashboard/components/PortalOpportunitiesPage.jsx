@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ContactRound,
   Copy,
+  Download,
   Edit3,
   FilePenLine,
   Filter,
@@ -30,7 +31,7 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PortalSidebar from './PortalSidebar.jsx';
 import {
   createOpportunityWorkbookRow,
@@ -94,7 +95,11 @@ const normalizeHeader = (value) =>
     .trim()
     .toUpperCase();
 
-const isFilled = (value) => value !== null && value !== undefined && String(value).trim() !== '';
+const isFilled = (value) => {
+  if (value === null || value === undefined) return false;
+  const normalizedValue = String(value).trim();
+  return normalizedValue !== '' && !/^-+$/.test(normalizedValue);
+};
 
 const serializeCell = (value) => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -220,9 +225,18 @@ const mergeableHeaders = new Set([
   'PROYECTOS RELACIONADOS',
 ]);
 const singleValueGroupHeaders = new Set([
+  'APERTURA',
+  'CIERRE',
+  'FECHA APERTURA',
+  'FECHA DE APERTURA',
+  'FECHA CIERRE',
+  'FECHA DE CIERRE',
   'OPENING',
+  'CLOSING',
   'DEADLINE',
   'DEADLINE APERTURA',
+  'DEADLINE CIERRE',
+  'DEADLINE CLOSING',
   'LINK CALL',
   'TYPE OF ACTION',
   'ANUNCIO Y N',
@@ -259,7 +273,56 @@ const opportunityDetailColumnGroups = [
   },
 ];
 
-const buildMergedTable = (rows, columns) => {
+const getHeaderIndex = (headers, names) => {
+  const normalizedNames = names.map(normalizeHeader);
+  return headers.findIndex((header) => normalizedNames.includes(normalizeHeader(header)));
+};
+
+const hasEmbeddedContactData = (row, headers) =>
+  [
+    ['Nombre', 'Nombre y apellidos', 'Name'],
+    ['Email', 'E-mail', 'Mail', 'Correo', 'Contacto'],
+    ['Rol'],
+  ].some((names) => {
+    const index = getHeaderIndex(headers, names);
+    return index >= 0 && isFilled(row.values?.[index]);
+  });
+
+const countEmbeddedContacts = (rows, headers) =>
+  rows.filter((row) => hasEmbeddedContactData(row, headers)).length;
+
+const buildEmbeddedContactLinks = ({ rows, workbook }) => {
+  const headers = workbook?.headers || [];
+  const contactColumns = opportunityDetailColumnGroups
+    .map((group) => ({
+      label: group.label,
+      sourceIndex: getHeaderIndex(headers, group.headers),
+    }))
+    .filter((column) => column.sourceIndex >= 0);
+
+  return rows
+    .filter((row) => hasEmbeddedContactData(row, headers))
+    .map((row) => ({
+      id: `embedded-${row._id}`,
+      isEmbedded: true,
+      opportunityRowId: row._id,
+      createdAt: null,
+      tracking: {},
+      trackingUpdatedAt: null,
+      contact: {
+        rowId: row._id,
+        workbookId: `embedded-${workbook?._id || 'excel'}`,
+        workbookName: 'Contactos del Excel',
+        sourceFileName: workbook?.sourceFileName || workbook?.name || 'Excel de oportunidades',
+        sheetName: workbook?.sheetName || '',
+        rowNumber: row.rowNumber,
+        headers: contactColumns.map((column) => column.label),
+        values: contactColumns.map((column) => row.values?.[column.sourceIndex] ?? null),
+      },
+    }));
+};
+
+const buildMergedTable = (rows, columns, allHeaders = []) => {
   const spanByCell = new Map();
   const hiddenCells = new Set();
   const displayValueByCell = new Map();
@@ -305,7 +368,8 @@ const buildMergedTable = (rows, columns) => {
       const groupRows = rows.slice(groupStartIndex, endIndex + 1);
       const contactCount = rows
         .slice(groupStartIndex, endIndex + 1)
-        .reduce((total, row) => total + (Number(row.contactLinkCount) || 0), 0);
+        .reduce((total, row) => total + (Number(row.contactLinkCount) || 0), 0) +
+        countEmbeddedContacts(groupRows, allHeaders);
 
       contactSpanByRow.set(groupStartIndex, rowSpan);
       contactCountByRow.set(groupStartIndex, contactCount);
@@ -349,7 +413,11 @@ const buildMergedTable = (rows, columns) => {
   } else {
     rows.forEach((row, rowIndex) => {
       contactSpanByRow.set(rowIndex, 1);
-      contactCountByRow.set(rowIndex, Number(row.contactLinkCount) || 0);
+      contactCountByRow.set(
+        rowIndex,
+        (Number(row.contactLinkCount) || 0) +
+          (hasEmbeddedContactData(row, allHeaders) ? 1 : 0)
+      );
     });
   }
 
@@ -460,6 +528,134 @@ const detectSheetTable = (sheets) => {
 
 const fileNameWithoutExtension = (fileName) => fileName.replace(/\.xlsx$/i, '').trim();
 
+const crc32Table = (() => {
+  const table = [];
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value >>> 0;
+  }
+  return table;
+})();
+
+const crc32 = (bytes) => {
+  let crc = 0xffffffff;
+  bytes.forEach((byte) => {
+    crc = crc32Table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  });
+  return (crc ^ 0xffffffff) >>> 0;
+};
+
+const writeUint16 = (target, value) => {
+  target.push(value & 0xff, (value >>> 8) & 0xff);
+};
+
+const writeUint32 = (target, value) => {
+  target.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+};
+
+const createZipBlob = (files) => {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const centralDirectory = [];
+  let offset = 0;
+
+  files.forEach(({ name, content }) => {
+    const nameBytes = encoder.encode(name);
+    const contentBytes = encoder.encode(content);
+    const checksum = crc32(contentBytes);
+    const localHeader = [];
+
+    writeUint32(localHeader, 0x04034b50);
+    writeUint16(localHeader, 20);
+    writeUint16(localHeader, 0);
+    writeUint16(localHeader, 0);
+    writeUint16(localHeader, 0);
+    writeUint16(localHeader, 0);
+    writeUint32(localHeader, checksum);
+    writeUint32(localHeader, contentBytes.length);
+    writeUint32(localHeader, contentBytes.length);
+    writeUint16(localHeader, nameBytes.length);
+    writeUint16(localHeader, 0);
+    chunks.push(new Uint8Array(localHeader), nameBytes, contentBytes);
+
+    const centralHeader = [];
+    writeUint32(centralHeader, 0x02014b50);
+    writeUint16(centralHeader, 20);
+    writeUint16(centralHeader, 20);
+    writeUint16(centralHeader, 0);
+    writeUint16(centralHeader, 0);
+    writeUint16(centralHeader, 0);
+    writeUint16(centralHeader, 0);
+    writeUint32(centralHeader, checksum);
+    writeUint32(centralHeader, contentBytes.length);
+    writeUint32(centralHeader, contentBytes.length);
+    writeUint16(centralHeader, nameBytes.length);
+    writeUint16(centralHeader, 0);
+    writeUint16(centralHeader, 0);
+    writeUint16(centralHeader, 0);
+    writeUint16(centralHeader, 0);
+    writeUint32(centralHeader, 0);
+    writeUint32(centralHeader, offset);
+    centralDirectory.push(new Uint8Array(centralHeader), nameBytes);
+    offset += localHeader.length + nameBytes.length + contentBytes.length;
+  });
+
+  const centralDirectorySize = centralDirectory.reduce((total, chunk) => total + chunk.length, 0);
+  const endRecord = [];
+  writeUint32(endRecord, 0x06054b50);
+  writeUint16(endRecord, 0);
+  writeUint16(endRecord, 0);
+  writeUint16(endRecord, files.length);
+  writeUint16(endRecord, files.length);
+  writeUint32(endRecord, centralDirectorySize);
+  writeUint32(endRecord, offset);
+  writeUint16(endRecord, 0);
+
+  return new Blob([...chunks, ...centralDirectory, new Uint8Array(endRecord)], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+};
+
+const escapeXml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const columnName = (index) => {
+  let name = '';
+  let nextIndex = index + 1;
+  while (nextIndex > 0) {
+    const remainder = (nextIndex - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    nextIndex = Math.floor((nextIndex - 1) / 26);
+  }
+  return name;
+};
+
+const createXlsxBlob = (headers, rows) => {
+  const sheetRows = [headers, ...rows].map((row, rowIndex) => {
+    const cells = row.map((value, columnIndex) => {
+      const cellReference = `${columnName(columnIndex)}${rowIndex + 1}`;
+      return `<c r="${cellReference}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`;
+    });
+    return `<row r="${rowIndex + 1}">${cells.join('')}</row>`;
+  });
+
+  return createZipBlob([
+    { name: '[Content_Types].xml', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>' },
+    { name: '_rels/.rels', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+    { name: 'xl/workbook.xml', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Contactos" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+    { name: 'xl/_rels/workbook.xml.rels', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>' },
+    { name: 'xl/worksheets/sheet1.xml', content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows.join('')}</sheetData></worksheet>` },
+  ]);
+};
+
 const libraryCopies = {
   opportunities: {
     category: 'opportunities',
@@ -500,9 +696,11 @@ const libraryCopies = {
 const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const { portalId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const copy = libraryCopies[libraryType] || libraryCopies.opportunities;
   const workbookCategory = copy.category;
   const isContactsLibrary = workbookCategory === 'contacts';
+  const requestedWorkbookId = searchParams.get('workbook') || '';
   const excelInputRef = useRef(null);
   const linkedContactsExcelInputRef = useRef(null);
   const tableScrollerRef = useRef(null);
@@ -511,6 +709,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [activeWorkbookId, setActiveWorkbookId] = useState('');
   const [activeWorkbook, setActiveWorkbook] = useState(null);
   const [searchValue, setSearchValue] = useState('');
+  const [workbookSearchQuery, setWorkbookSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isWorkbookLoading, setIsWorkbookLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -638,12 +837,18 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       const nextWorkbooks = response.data || [];
       setWorkbooks(nextWorkbooks);
       if (preferredWorkbookId) setWorkbookPage(1);
-      setActiveWorkbookId((current) => {
-        const requestedId = preferredWorkbookId || current;
-        return nextWorkbooks.some((workbook) => workbook._id === requestedId)
+      const requestedId = preferredWorkbookId || activeWorkbookId || requestedWorkbookId;
+      const nextActiveWorkbookId = nextWorkbooks.some((workbook) => workbook._id === requestedId)
           ? requestedId
           : nextWorkbooks[0]?._id || '';
-      });
+      setActiveWorkbookId(nextActiveWorkbookId);
+      if (nextActiveWorkbookId) {
+        setSearchParams((currentParams) => {
+          const nextParams = new URLSearchParams(currentParams);
+          nextParams.set('workbook', nextActiveWorkbookId);
+          return nextParams;
+        }, { replace: true });
+      }
     } catch (error) {
       setErrorMessage(
         error.response?.data?.message || copy.loadListError
@@ -655,7 +860,6 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
   useEffect(() => {
     let isMounted = true;
-
     setIsLoading(true);
     setErrorMessage('');
     setActiveWorkbook(null);
@@ -667,8 +871,11 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       .then((response) => {
         if (!isMounted) return;
         const nextWorkbooks = response.data || [];
+        const nextActiveWorkbookId = nextWorkbooks.some((workbook) => workbook._id === requestedWorkbookId)
+          ? requestedWorkbookId
+          : nextWorkbooks[0]?._id || '';
         setWorkbooks(nextWorkbooks);
-        setActiveWorkbookId(nextWorkbooks[0]?._id || '');
+        setActiveWorkbookId(nextActiveWorkbookId);
       })
       .catch((error) => {
         if (isMounted) {
@@ -685,13 +892,24 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     return () => {
       isMounted = false;
     };
-  }, [portalId, workbookCategory, copy.loadListError]);
+  }, [portalId, workbookCategory, copy.loadListError, requestedWorkbookId]);
 
   useEffect(() => {
     setSelectedContactRowIds([]);
     setSelectedOpportunityRowIds([]);
     setSelectedOpportunityDetail(null);
   }, [activeWorkbookId, workbookCategory, appliedContactFilters]);
+
+  useEffect(() => {
+    if (isContactsLibrary) return undefined;
+    const timeout = window.setTimeout(() => {
+      setWorkbookSearchQuery(searchValue.trim());
+      setWorkbookPage(1);
+      setFocusedOpportunityRowId('');
+    }, 260);
+
+    return () => window.clearTimeout(timeout);
+  }, [isContactsLibrary, searchValue]);
 
   useEffect(() => {
     if (!activeWorkbookId) return undefined;
@@ -708,6 +926,9 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
         category: workbookCategory,
         ...(isContactsLibrary && appliedContactFilters.length
           ? { filters: JSON.stringify(appliedContactFilters) }
+          : {}),
+        ...(!isContactsLibrary && workbookSearchQuery.length >= 2
+          ? { search: workbookSearchQuery }
           : {}),
         ...(!isContactsLibrary && focusedOpportunityRowId
           ? { focusRowId: focusedOpportunityRowId }
@@ -741,6 +962,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     workbookCategory,
     isContactsLibrary,
     appliedContactFilters,
+    workbookSearchQuery,
     workbookReloadKey,
     focusedOpportunityRowId,
   ]);
@@ -795,6 +1017,10 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
   const filteredRows = useMemo(() => {
     const rows = activeWorkbook?.rows || [];
+    if (!isContactsLibrary) {
+      return pinFavoriteOpportunityGroups(rows, activeWorkbook?.workbook?.headers || [], favoriteOpportunityIds);
+    }
+
     const normalizedSearch = searchValue.trim().toLocaleLowerCase('es');
     const matchingRows = !normalizedSearch ? rows : rows.filter((row) =>
       row.values.some((value) =>
@@ -802,8 +1028,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       ) ||
       getOpportunityNote(row).toLocaleLowerCase('es').includes(normalizedSearch)
     );
-    if (isContactsLibrary) return matchingRows;
-    return pinFavoriteOpportunityGroups(matchingRows, activeWorkbook?.workbook?.headers || [], favoriteOpportunityIds);
+    return matchingRows;
   }, [activeWorkbook, favoriteOpportunityIds, isContactsLibrary, searchValue]);
 
   const toggleOpportunityFavorite = async (entityId) => {
@@ -943,14 +1168,15 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     }
   };
 
-  const loadLinkedContactsForRows = async ({ workbookId, rowIds }) => {
+  const loadLinkedContactsForRows = async ({ workbookId, rowIds, embeddedContacts = [] }) => {
     const response = await getLinkedContactsForOpportunityRows({
       portalId,
       workbookId,
       rowIds,
     });
-    setLinkedContacts(response.data || []);
-    return response.data || [];
+    const contacts = [...embeddedContacts, ...(response.data || [])];
+    setLinkedContacts(contacts);
+    return contacts;
   };
 
   const openLinkedContactsModal = async ({ rows, count }) => {
@@ -959,16 +1185,22 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     const firstRow = { ...rows[0], workbook: activeWorkbook.workbook };
     const opportunity = buildOpportunityOption(firstRow);
     const rowIds = rows.map((row) => row._id);
+    const embeddedContacts = buildEmbeddedContactLinks({
+      rows,
+      workbook: activeWorkbook.workbook,
+    });
+    const totalCount = Math.max(Number(count) || 0, embeddedContacts.length);
 
     setLinkedContactsModal({
       title: opportunity.title,
       subtitle: opportunity.subtitle,
-      count,
+      count: totalCount,
       workbookId: activeWorkbook.workbook._id,
       primaryRowId: rows[0]._id,
       rowIds,
+      embeddedContacts,
     });
-    setLinkedContacts([]);
+    setLinkedContacts(embeddedContacts);
     setLinkedContactsError('');
     setLinkedContactSearchValue('');
     setLinkedContactSearchResults([]);
@@ -978,6 +1210,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       await loadLinkedContactsForRows({
         workbookId: activeWorkbook.workbook._id,
         rowIds,
+        embeddedContacts,
       });
     } catch (error) {
       setLinkedContactsError(
@@ -1158,6 +1391,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       const refreshedContacts = await loadLinkedContactsForRows({
         workbookId: linkedContactsModal.workbookId,
         rowIds: linkedContactsModal.rowIds,
+        embeddedContacts: linkedContactsModal.embeddedContacts || [],
       });
       setLinkedContactsModal((currentModal) =>
         currentModal ? { ...currentModal, count: refreshedContacts.length } : currentModal
@@ -1196,6 +1430,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       const refreshedContacts = await loadLinkedContactsForRows({
         workbookId: linkedContactsModal.workbookId,
         rowIds: linkedContactsModal.rowIds,
+        embeddedContacts: linkedContactsModal.embeddedContacts || [],
       });
       setLinkedContactsModal((current) => current ? { ...current, count: refreshedContacts.length } : current);
       setNotice(`${rowIds.length} contacto${rowIds.length === 1 ? '' : 's'} creado${rowIds.length === 1 ? '' : 's'} y vinculado${rowIds.length === 1 ? '' : 's'}.`);
@@ -1384,6 +1619,11 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
   const handleWorkbookChange = (workbookId) => {
     if (workbookId === activeWorkbookId) return;
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      nextParams.set('workbook', workbookId);
+      return nextParams;
+    }, { replace: true });
     setIsWorkbookLoading(true);
     setSearchValue('');
     setDraftContactFilters([{ header: '', value: '' }]);
@@ -1620,6 +1860,11 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     setSelectedContactRowIds([]);
     setFocusedOpportunityRowId(result._id);
     setWorkbookPage(1);
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      nextParams.set('workbook', result.workbook._id);
+      return nextParams;
+    }, { replace: true });
     setActiveWorkbookId(result.workbook._id);
     setWorkbookReloadKey((current) => current + 1);
   };
@@ -1639,8 +1884,8 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     [activeWorkbook, isContactsLibrary]
   );
   const mergedTable = useMemo(
-    () => buildMergedTable(filteredRows, visibleColumns),
-    [filteredRows, visibleColumns]
+    () => buildMergedTable(filteredRows, visibleColumns, activeWorkbook?.workbook?.headers || []),
+    [activeWorkbook, filteredRows, visibleColumns]
   );
   const selectableOpportunityRows = useMemo(
     () =>
@@ -1980,7 +2225,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                         <input
                           value={searchValue}
                           onChange={(event) => setSearchValue(event.target.value)}
-                          placeholder="Buscar en esta página..."
+                          placeholder={isContactsLibrary ? 'Buscar en esta pagina...' : 'Buscar en este Excel...'}
                           className="w-full bg-transparent text-sm text-orange-950 outline-none placeholder:text-orange-300"
                         />
                       </label>
@@ -3629,6 +3874,51 @@ const LinkedContactsModal = ({
     return sourceIndex >= 0 ? displayCell(contact.values?.[sourceIndex]) : '-';
   };
 
+  const downloadContactsExcel = () => {
+    if (!contacts.length) return;
+
+    const safeFileName = String(meta.title || 'contactos')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 80) || 'contactos';
+    const exportColumns = [
+      { label: 'Origen', getValue: ({ contact }) => contact.workbookName || 'Contactos' },
+      { label: 'Archivo', getValue: ({ contact }) => contact.sourceFileName || '' },
+      { label: 'Fila', getValue: ({ contact }) => contact.rowNumber || '' },
+      {
+        label: 'Tipo',
+        getValue: (contactLink) => (contactLink.isEmbedded ? 'Contacto del Excel' : 'Contacto vinculado'),
+      },
+      {
+        label: 'Seguimiento',
+        getValue: (contactLink) => {
+          const tracking = contactLink.tracking || {};
+          return [
+            tracking.emailSent ? 'Correo enviado' : '',
+            tracking.responseReceived ? 'Con respuesta' : '',
+            tracking.meetingScheduled ? 'Reunion agendada' : '',
+          ].filter(Boolean).join(' / ');
+        },
+      },
+      ...columns.map((column) => ({
+        label: column.label,
+        getValue: ({ contact }) => getContactColumnValue(contact, column),
+      })),
+    ];
+    const blob = createXlsxBlob(
+      exportColumns.map((column) => column.label),
+      contacts.map((contactLink) => exportColumns.map((column) => column.getValue(contactLink)))
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${safeFileName}_contactos.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const describeContactResult = (row) => {
     const headers = row.workbook?.headers || [];
     const name =
@@ -3804,9 +4094,20 @@ const LinkedContactsModal = ({
             </div>
           ) : contacts.length ? (
             <div className="mx-auto max-w-[1800px] overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-orange-100 bg-orange-50/55 px-4 py-2 text-xs font-semibold text-orange-500">
+              <div className="flex items-center justify-between gap-3 border-b border-orange-100 bg-orange-50/55 px-4 py-2 text-xs font-semibold text-orange-500">
                 <span>Contactos vinculados</span>
-                <span className="hidden sm:inline">Mantén pulsado y arrastra para ver todas las columnas</span>
+                <div className="flex items-center gap-3">
+                  <span className="hidden sm:inline">Manten pulsado y arrastra para ver todas las columnas</span>
+                  <button
+                    type="button"
+                    onClick={downloadContactsExcel}
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-orange-200 bg-white px-3 py-2 text-xs font-semibold text-orange-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50"
+                    title="Descargar contactos en Excel"
+                  >
+                    <Download size={14} />
+                    Descargar Excel
+                  </button>
+                </div>
               </div>
               <div
                 ref={linkedContactsTableRef}
@@ -3843,6 +4144,7 @@ const LinkedContactsModal = ({
                     {contacts.map((contactLink, index) => {
                       const { id, contact } = contactLink;
                       const tracking = contactLink.tracking || {};
+                      const isEmbeddedContact = Boolean(contactLink.isEmbedded);
                       const completedSteps = [
                         tracking.emailSent,
                         tracking.responseReceived,
@@ -3856,28 +4158,41 @@ const LinkedContactsModal = ({
                       >
                         <td className="w-28 border border-orange-100 px-4 py-3 align-middle">
                           <div className="flex h-full min-h-24 items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={() => onUnlink(id)}
-                            disabled={unlinkingContactId === id}
-                            className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-rose-100 bg-white px-3 py-2 text-xs font-semibold text-rose-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            title="Quitar contacto de esta oportunidad"
-                          >
-                            <Trash2 size={14} />
-                            {unlinkingContactId === id ? 'Quitando...' : 'Quitar'}
-                          </button>
+                          {isEmbeddedContact ? (
+                            <span className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-600">
+                              Excel
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => onUnlink(id)}
+                              disabled={unlinkingContactId === id}
+                              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-rose-100 bg-white px-3 py-2 text-xs font-semibold text-rose-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              title="Quitar contacto de esta oportunidad"
+                            >
+                              <Trash2 size={14} />
+                              {unlinkingContactId === id ? 'Quitando...' : 'Quitar'}
+                            </button>
+                          )}
                           </div>
                         </td>
                         <td className="min-w-44 border border-orange-100 px-4 py-3 align-middle">
-                          <button
-                            type="button"
-                            onClick={() => setTrackingLink(contactLink)}
-                            className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-semibold text-orange-700 shadow-sm transition hover:bg-orange-50"
-                            title="Ver y editar el seguimiento de este contacto"
-                          >
-                            <Mail size={15} />
-                            {completedSteps ? `${completedSteps}/3 completado` : 'Seguimiento'}
-                          </button>
+                          {isEmbeddedContact ? (
+                            <span className="inline-flex items-center gap-2 rounded-xl border border-orange-100 bg-white px-3 py-2 text-xs font-semibold text-orange-500 shadow-sm">
+                              <FileSpreadsheet size={15} />
+                              Contacto del Excel
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setTrackingLink(contactLink)}
+                              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-semibold text-orange-700 shadow-sm transition hover:bg-orange-50"
+                              title="Ver y editar el seguimiento de este contacto"
+                            >
+                              <Mail size={15} />
+                              {completedSteps ? `${completedSteps}/3 completado` : 'Seguimiento'}
+                            </button>
+                          )}
                           <div className="mt-2 flex flex-wrap gap-1">
                             {tracking.emailSent && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">Correo enviado</span>}
                             {tracking.responseReceived && <span className="rounded-full bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700">Con respuesta</span>}
