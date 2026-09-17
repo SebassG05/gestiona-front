@@ -703,6 +703,53 @@ const saveStoredWorkbookOrder = ({ portalId, category, workbookIds }) => {
   );
 };
 
+const getOpportunityNoteStorageKey = ({ portalId, workbookId }) =>
+  `gestiona:opportunity-notes:${portalId}:${workbookId}`;
+
+const getStoredOpportunityNotes = ({ portalId, workbookId }) => {
+  if (!portalId || !workbookId) return {};
+
+  try {
+    return JSON.parse(
+      window.localStorage.getItem(getOpportunityNoteStorageKey({ portalId, workbookId })) || '{}'
+    );
+  } catch {
+    return {};
+  }
+};
+
+const saveStoredOpportunityNote = ({ portalId, workbookId, rowId, note }) => {
+  if (!portalId || !workbookId || !rowId) return;
+  const storageKey = getOpportunityNoteStorageKey({ portalId, workbookId });
+  const notes = getStoredOpportunityNotes({ portalId, workbookId });
+  const nextNote = String(note || '').trim().slice(0, 5000);
+
+  if (nextNote) {
+    notes[rowId] = nextNote;
+  } else {
+    delete notes[rowId];
+  }
+
+  window.localStorage.setItem(storageKey, JSON.stringify(notes));
+};
+
+const applyStoredOpportunityNotes = ({ workbookData, portalId }) => {
+  const workbookId = workbookData?.workbook?._id;
+  if (!workbookId || !Array.isArray(workbookData?.rows)) return workbookData;
+
+  const notes = getStoredOpportunityNotes({ portalId, workbookId });
+  if (!Object.keys(notes).length) return workbookData;
+
+  return {
+    ...workbookData,
+    rows: workbookData.rows.map((row) =>
+      Object.prototype.hasOwnProperty.call(notes, row._id)
+        ? { ...row, opportunityNote: notes[row._id] }
+        : row
+    ),
+  };
+};
+
 const SortableWorkbookTab = ({ workbook, isActive, onSelect }) => {
   const {
     attributes,
@@ -1051,10 +1098,13 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     })
       .then((response) => {
         if (!isMounted) return;
-        setActiveWorkbook(response.data || null);
-        setWorkbookPagination(response.data?.pagination || emptyRowsPagination);
-        if (response.data?.pagination?.page && response.data.pagination.page !== workbookPage) {
-          setWorkbookPage(response.data.pagination.page);
+        const workbookData = response.data
+          ? applyStoredOpportunityNotes({ workbookData: response.data, portalId })
+          : null;
+        setActiveWorkbook(workbookData);
+        setWorkbookPagination(workbookData?.pagination || emptyRowsPagination);
+        if (workbookData?.pagination?.page && workbookData.pagination.page !== workbookPage) {
+          setWorkbookPage(workbookData.pagination.page);
         }
       })
       .catch((error) => {
@@ -1375,17 +1425,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
     setSavingOpportunityNoteRowId(rowId);
     setErrorMessage('');
-
-    try {
-      const response = await updateOpportunityRowNote({
-        portalId,
-        workbookId: activeWorkbook.workbook._id,
-        rowId,
-        note,
-      });
-      const updatedRow = response.data;
-      const nextNote = updatedRow?.opportunityNote || '';
-
+    const applyNoteToState = (nextNote) => {
       setActiveWorkbook((currentWorkbook) =>
         currentWorkbook
           ? {
@@ -1406,9 +1446,34 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
             }
           : currentDetail
       );
+    };
+
+    try {
+      const response = await updateOpportunityRowNote({
+        portalId,
+        workbookId: activeWorkbook.workbook._id,
+        rowId,
+        note,
+      });
+      const updatedRow = response.data;
+      const nextNote = updatedRow?.opportunityNote || '';
+
+      applyNoteToState(nextNote);
       setNotice(nextNote ? 'Nota guardada correctamente.' : 'Nota eliminada correctamente.');
       return nextNote;
     } catch (error) {
+      if (error.response?.status === 404) {
+        const nextNote = String(note || '').trim().slice(0, 5000);
+        saveStoredOpportunityNote({
+          portalId,
+          workbookId: activeWorkbook.workbook._id,
+          rowId,
+          note: nextNote,
+        });
+        applyNoteToState(nextNote);
+        setNotice(nextNote ? 'Nota guardada en este navegador.' : 'Nota eliminada.');
+        return nextNote;
+      }
       setErrorMessage(error.response?.data?.message || 'No se pudo guardar la nota.');
       throw error;
     } finally {
