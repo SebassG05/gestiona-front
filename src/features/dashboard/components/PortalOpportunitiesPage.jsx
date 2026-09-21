@@ -286,6 +286,11 @@ const opportunityDetailColumnGroups = [
     headers: ['E-mail', 'Email', 'Mail', 'Correo', 'Contacto'],
   },
 ];
+const embeddedContactHeaderGroups = [
+  ...opportunityDetailColumnGroups.map((group) => group.headers),
+  ['Nombre y apellidos', 'Name'],
+  ['E-mail', 'Mail', 'Correo', 'Contacto'],
+];
 
 const getHeaderIndex = (headers, names) => {
   const normalizedNames = names.map(normalizeHeader);
@@ -897,6 +902,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [isLoadingLinkedContacts, setIsLoadingLinkedContacts] = useState(false);
   const [linkedContactsError, setLinkedContactsError] = useState('');
   const [unlinkingContactId, setUnlinkingContactId] = useState('');
+  const [removingEmbeddedContactId, setRemovingEmbeddedContactId] = useState('');
   const [linkedContactSearchValue, setLinkedContactSearchValue] = useState('');
   const [linkedContactSearchResults, setLinkedContactSearchResults] = useState([]);
   const [isSearchingLinkedContacts, setIsSearchingLinkedContacts] = useState(false);
@@ -1471,6 +1477,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     setLinkedContacts([]);
     setLinkedContactsError('');
     setUnlinkingContactId('');
+    setRemovingEmbeddedContactId('');
     setLinkedContactSearchValue('');
     setLinkedContactSearchResults([]);
     setLinkingSearchContactId('');
@@ -1503,6 +1510,59 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
       );
     } finally {
       setUnlinkingContactId('');
+    }
+  };
+
+  const removeEmbeddedContact = async (contactLink) => {
+    const rowId = contactLink?.opportunityRowId;
+    if (!activeWorkbook?.workbook?._id || !rowId || removingEmbeddedContactId) return;
+    if (!window.confirm('Quitar este contacto solo de esta oportunidad?')) return;
+
+    const headers = activeWorkbook.workbook.headers || [];
+    const row = (activeWorkbook.rows || []).find((currentRow) => currentRow._id === rowId);
+    if (!row) {
+      setLinkedContactsError('No se pudo encontrar la fila de este contacto.');
+      return;
+    }
+
+    const nextValues = [...(row.values || [])];
+    embeddedContactHeaderGroups.forEach((names) => {
+      const index = getHeaderIndex(headers, names);
+      if (index >= 0) nextValues[index] = '';
+    });
+
+    setRemovingEmbeddedContactId(contactLink.id);
+    setLinkedContactsError('');
+
+    try {
+      await updateOpportunityWorkbookRow({
+        portalId,
+        workbookId: activeWorkbook.workbook._id,
+        rowId,
+        values: nextValues,
+      });
+      setLinkedContacts((currentContacts) =>
+        currentContacts.filter((currentContact) => currentContact.id !== contactLink.id)
+      );
+      setLinkedContactsModal((currentModal) =>
+        currentModal
+          ? {
+              ...currentModal,
+              count: Math.max((currentModal.count || 1) - 1, 0),
+              embeddedContacts: (currentModal.embeddedContacts || []).filter(
+                (currentContact) => currentContact.id !== contactLink.id
+              ),
+            }
+          : currentModal
+      );
+      setNotice('Contacto del Excel quitado de esta oportunidad.');
+      await loadWorkbooks(activeWorkbook.workbook._id);
+    } catch (error) {
+      setLinkedContactsError(
+        error.response?.data?.message || 'No se pudo quitar el contacto del Excel.'
+      );
+    } finally {
+      setRemovingEmbeddedContactId('');
     }
   };
 
@@ -3146,6 +3206,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               contacts={linkedContacts}
               isLoading={isLoadingLinkedContacts}
               unlinkingContactId={unlinkingContactId}
+              removingEmbeddedContactId={removingEmbeddedContactId}
               searchValue={linkedContactSearchValue}
               searchResults={linkedContactSearchResults}
               isSearching={isSearchingLinkedContacts}
@@ -3158,6 +3219,7 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               isAddingContacts={isAddingLinkedContacts}
               onCancel={closeLinkedContactsModal}
               onUnlink={unlinkLinkedContact}
+              onRemoveEmbedded={removeEmbeddedContact}
               onSaveTracking={saveLinkedContactTracking}
               onOpenCalendar={() => navigate(`/dashboard/portal/${portalId}/team`)}
               onCopyCell={handleCopyCell}
@@ -3972,6 +4034,7 @@ const LinkedContactsModal = ({
   contacts,
   isLoading,
   unlinkingContactId,
+  removingEmbeddedContactId,
   searchValue,
   searchResults,
   isSearching,
@@ -3984,6 +4047,7 @@ const LinkedContactsModal = ({
   isAddingContacts,
   onCancel,
   onUnlink,
+  onRemoveEmbedded,
   onSaveTracking,
   onOpenCalendar,
   onCopyCell,
@@ -4015,6 +4079,20 @@ const LinkedContactsModal = ({
     setIsLinkedContactsDragging(false);
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
+
+  const getContactColumnValue = (contact, column) => {
+    const workbookKey = contact.workbookId || 'default';
+    let sourceIndex = column.sourceIndexByWorkbook.get(workbookKey);
+
+    if (sourceIndex === undefined) {
+      sourceIndex = (contact.headers || []).findIndex(
+        (header) => normalizeHeader(header) === column.key
+      );
+    }
+
+    return sourceIndex >= 0 ? displayCell(contact.values?.[sourceIndex]) : '-';
+  };
+
   const columns = useMemo(() => {
     const columnMap = new Map();
 
@@ -4031,21 +4109,10 @@ const LinkedContactsModal = ({
       });
     });
 
-    return [...columnMap.values()];
+    return [...columnMap.values()].filter((column) =>
+      contacts.some(({ contact }) => isCopyableCellValue(getContactColumnValue(contact, column)))
+    );
   }, [contacts]);
-
-  const getContactColumnValue = (contact, column) => {
-    const workbookKey = contact.workbookId || 'default';
-    let sourceIndex = column.sourceIndexByWorkbook.get(workbookKey);
-
-    if (sourceIndex === undefined) {
-      sourceIndex = (contact.headers || []).findIndex(
-        (header) => normalizeHeader(header) === column.key
-      );
-    }
-
-    return sourceIndex >= 0 ? displayCell(contact.values?.[sourceIndex]) : '-';
-  };
 
   const downloadContactsExcel = () => {
     if (!contacts.length) return;
@@ -4332,9 +4399,16 @@ const LinkedContactsModal = ({
                         <td className="w-28 border border-orange-100 px-4 py-3 align-middle">
                           <div className="flex h-full min-h-24 items-center justify-center">
                           {isEmbeddedContact ? (
-                            <span className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-600">
-                              Excel
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => onRemoveEmbedded(contactLink)}
+                              disabled={removingEmbeddedContactId === id}
+                              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-rose-100 bg-white px-3 py-2 text-xs font-semibold text-rose-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              title="Quitar contacto del Excel de esta oportunidad"
+                            >
+                              <Trash2 size={14} />
+                              {removingEmbeddedContactId === id ? 'Quitando...' : 'Quitar'}
+                            </button>
                           ) : (
                             <button
                               type="button"
