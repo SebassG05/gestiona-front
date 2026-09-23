@@ -41,6 +41,8 @@ import {
   Sheet,
   Square,
   Star,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   Upload,
   UserPlus,
@@ -4138,6 +4140,8 @@ const LinkedContactsModal = ({
           return [
             tracking.emailSent ? 'Correo enviado' : '',
             tracking.responseReceived ? 'Con respuesta' : '',
+            tracking.interestStatus === 'interested' ? 'Interesado' : '',
+            tracking.interestStatus === 'not_interested' ? 'No interesado' : '',
             tracking.meetingScheduled ? 'Reunion agendada' : '',
           ].filter(Boolean).join(' / ');
         },
@@ -4388,6 +4392,7 @@ const LinkedContactsModal = ({
                       const completedSteps = [
                         tracking.emailSent,
                         tracking.responseReceived,
+                        tracking.interestStatus,
                         tracking.meetingScheduled,
                       ].filter(Boolean).length;
 
@@ -4437,12 +4442,14 @@ const LinkedContactsModal = ({
                               title="Ver y editar el seguimiento de este contacto"
                             >
                               <Mail size={15} />
-                              {completedSteps ? `${completedSteps}/3 completado` : 'Seguimiento'}
+                              {completedSteps ? `${completedSteps}/4 completado` : 'Seguimiento'}
                             </button>
                           )}
                           <div className="mt-2 flex flex-wrap gap-1">
                             {tracking.emailSent && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">Correo enviado</span>}
                             {tracking.responseReceived && <span className="rounded-full bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700">Con respuesta</span>}
+                            {tracking.interestStatus === 'interested' && <span className="rounded-full bg-lime-50 px-2 py-1 text-[11px] font-semibold text-lime-700">Interesado</span>}
+                            {tracking.interestStatus === 'not_interested' && <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">No interesado</span>}
                             {tracking.meetingScheduled && <span className="rounded-full bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">Reunión</span>}
                           </div>
                         </td>
@@ -4525,6 +4532,7 @@ const buildContactTrackingDraft = (tracking = {}) => ({
   emailSent: Boolean(tracking.emailSent),
   responseReceived: Boolean(tracking.responseReceived),
   responseNote: tracking.responseNote || '',
+  interestStatus: tracking.interestStatus || '',
   meetingScheduled: Boolean(tracking.meetingScheduled),
   meetingAt: tracking.meetingAt ? toDateTimeLocalValue(tracking.meetingAt) : '',
   meetingTitle: tracking.meetingTitle || '',
@@ -4599,6 +4607,7 @@ const ContactTrackingPanel = ({ contactLink, onCancel, onSave, onOpenCalendar })
         emailSent: form.emailSent,
         responseReceived: form.responseReceived,
         responseNote: form.responseReceived ? form.responseNote.trim() : '',
+        interestStatus: form.interestStatus,
         meetingScheduled: form.meetingScheduled,
         meetingAt: form.meetingScheduled ? new Date(form.meetingAt).toISOString() : null,
         meetingTitle: form.meetingScheduled ? form.meetingTitle.trim() : '',
@@ -4684,6 +4693,54 @@ const ContactTrackingPanel = ({ contactLink, onCancel, onSave, onOpenCalendar })
                 />
               </label>
             </ContactTrackingCheckCard>
+
+            <section className={`rounded-2xl border bg-white p-5 shadow-sm ${form.interestStatus ? 'border-lime-200' : 'border-orange-100'}`}>
+              <div className="flex items-start gap-4">
+                <div className="mt-1 grid h-5 w-5 place-items-center">
+                  {form.interestStatus === 'interested' ? (
+                    <ThumbsUp size={18} className="text-lime-600" />
+                  ) : form.interestStatus === 'not_interested' ? (
+                    <ThumbsDown size={18} className="text-rose-500" />
+                  ) : (
+                    <Square size={18} className="text-orange-300" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2 text-base font-semibold text-orange-950">
+                    Interes del contacto
+                  </span>
+                  <span className="mt-1 block text-sm leading-6 text-orange-500">
+                    Marca si el contacto esta interesado o si ha indicado que no quiere seguir.
+                  </span>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => updateField('interestStatus', form.interestStatus === 'interested' ? '' : 'interested')}
+                      disabled={isSaving}
+                      className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition disabled:opacity-50 ${
+                        form.interestStatus === 'interested'
+                          ? 'border-lime-200 bg-lime-50 text-lime-700'
+                          : 'border-orange-100 bg-white text-orange-700 hover:bg-orange-50'
+                      }`}
+                    >
+                      <ThumbsUp size={17} /> Interesado
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateField('interestStatus', form.interestStatus === 'not_interested' ? '' : 'not_interested')}
+                      disabled={isSaving}
+                      className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition disabled:opacity-50 ${
+                        form.interestStatus === 'not_interested'
+                          ? 'border-rose-200 bg-rose-50 text-rose-700'
+                          : 'border-orange-100 bg-white text-orange-700 hover:bg-orange-50'
+                      }`}
+                    >
+                      <ThumbsDown size={17} /> No interesado
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
 
             <ContactTrackingCheckCard
               active={form.meetingScheduled}
