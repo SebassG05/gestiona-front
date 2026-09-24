@@ -64,6 +64,7 @@ import {
   unlinkContactFromOpportunityRow,
   updateLinkedContactTracking,
   updateOpportunityWorkbookRow,
+  updateOpportunityRowNote,
 } from '../services/opportunityWorkbookService.js';
 import { getPortalFavorites, setPortalFavorite } from '../services/portalFavoriteService.js';
 import { getPortalMembers } from '../services/portalService.js';
@@ -712,45 +713,60 @@ const saveStoredWorkbookOrder = ({ portalId, category, workbookIds }) => {
 const getOpportunityNoteStorageKey = ({ portalId, workbookId }) =>
   `gestiona:opportunity-notes:${portalId}:${workbookId}`;
 
-const getStoredOpportunityNotes = ({ portalId, workbookId }) => {
-  if (!portalId || !workbookId) return {};
-
-  try {
-    return JSON.parse(
-      window.localStorage.getItem(getOpportunityNoteStorageKey({ portalId, workbookId })) || '{}'
-    );
-  } catch {
-    return {};
-  }
-};
-
-const saveStoredOpportunityNote = ({ portalId, workbookId, rowId, note }) => {
-  if (!portalId || !workbookId || !rowId) return;
-  const storageKey = getOpportunityNoteStorageKey({ portalId, workbookId });
-  const notes = getStoredOpportunityNotes({ portalId, workbookId });
-  const nextNote = String(note || '').trim().slice(0, 5000);
-
-  if (nextNote) {
-    notes[rowId] = nextNote;
-  } else {
-    delete notes[rowId];
-  }
-
-  window.localStorage.setItem(storageKey, JSON.stringify(notes));
-};
-
-const applyStoredOpportunityNotes = ({ workbookData, portalId }) => {
+const migrateLocalOpportunityNotes = async ({ workbookData, portalId }) => {
   const workbookId = workbookData?.workbook?._id;
-  if (!workbookId || !Array.isArray(workbookData?.rows)) return workbookData;
+  if (!portalId || !workbookId || !Array.isArray(workbookData?.rows)) return workbookData;
 
-  const notes = getStoredOpportunityNotes({ portalId, workbookId });
-  if (!Object.keys(notes).length) return workbookData;
+  const storageKey = getOpportunityNoteStorageKey({ portalId, workbookId });
+  let localNotes = {};
+  try {
+    localNotes = JSON.parse(window.localStorage.getItem(storageKey) || '{}');
+    if (!localNotes || typeof localNotes !== 'object' || Array.isArray(localNotes)) {
+      localNotes = {};
+    }
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return workbookData;
+  }
+
+  workbookData.rows.forEach((row) => {
+    if (getOpportunityNote(row)) delete localNotes[row._id];
+  });
+  const notesToMigrate = workbookData.rows.filter(
+    (row) => !getOpportunityNote(row) && String(localNotes[row._id] || '').trim()
+  );
+
+  const migratedNotes = new Map();
+  await Promise.all(
+    notesToMigrate.map(async (row) => {
+      try {
+        const response = await updateOpportunityRowNote({
+          portalId,
+          workbookId,
+          rowId: row._id,
+          note: localNotes[row._id],
+        });
+        migratedNotes.set(row._id, response.data?.opportunityNote || localNotes[row._id]);
+        delete localNotes[row._id];
+      } catch {
+        // Keep failed migrations locally so they can be retried on the next load.
+      }
+    })
+  );
+
+  if (Object.keys(localNotes).length) {
+    window.localStorage.setItem(storageKey, JSON.stringify(localNotes));
+  } else {
+    window.localStorage.removeItem(storageKey);
+  }
+
+  if (!migratedNotes.size) return workbookData;
 
   return {
     ...workbookData,
     rows: workbookData.rows.map((row) =>
-      Object.prototype.hasOwnProperty.call(notes, row._id)
-        ? { ...row, opportunityNote: notes[row._id] }
+      migratedNotes.has(row._id)
+        ? { ...row, opportunityNote: migratedNotes.get(row._id) }
         : row
     ),
   };
@@ -1103,11 +1119,12 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
           : {}),
       },
     })
-      .then((response) => {
+      .then(async (response) => {
         if (!isMounted) return;
         const workbookData = response.data
-          ? applyStoredOpportunityNotes({ workbookData: response.data, portalId })
+          ? await migrateLocalOpportunityNotes({ workbookData: response.data, portalId })
           : null;
+        if (!isMounted) return;
         setActiveWorkbook(workbookData);
         setWorkbookPagination(workbookData?.pagination || emptyRowsPagination);
         if (workbookData?.pagination?.page && workbookData.pagination.page !== workbookPage) {
@@ -1457,15 +1474,16 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
     try {
       const nextNote = String(note || '').trim().slice(0, 5000);
-      saveStoredOpportunityNote({
+      const response = await updateOpportunityRowNote({
         portalId,
         workbookId: activeWorkbook.workbook._id,
         rowId,
         note: nextNote,
       });
-      applyNoteToState(nextNote);
+      const savedNote = String(response.data?.opportunityNote ?? nextNote);
+      applyNoteToState(savedNote);
       setNotice(nextNote ? 'Nota guardada correctamente.' : 'Nota eliminada correctamente.');
-      return nextNote;
+      return savedNote;
     } catch (error) {
       setErrorMessage(error.response?.data?.message || 'No se pudo guardar la nota.');
       throw error;
