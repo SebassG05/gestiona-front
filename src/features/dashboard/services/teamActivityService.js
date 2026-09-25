@@ -7,6 +7,23 @@ export const getTeamActivities = async ({ portalId, startDate, endDate }) => {
   return response.data;
 };
 
+export const getGoogleCalendarEvents = async ({ portalId, startDate, endDate }) => {
+  const response = await api.get(
+    `/portals/${encodeURIComponent(portalId)}/google-calendar/events`,
+    { params: { startDate, endDate } }
+  );
+  return response.data;
+};
+
+export const syncGoogleCalendar = async ({ portalId, startDate, endDate }) => {
+  const response = await api.post(
+    `/portals/${encodeURIComponent(portalId)}/google-calendar/sync`,
+    null,
+    { params: { startDate, endDate } }
+  );
+  return response.data;
+};
+
 export const createTeamActivity = async ({ portalId, activity }) => {
   const response = await api.post(
     `/portals/${encodeURIComponent(portalId)}/team-activities`,

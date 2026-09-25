@@ -14,6 +14,7 @@ import {
   Pencil,
   PlaneTakeoff,
   Plus,
+  RefreshCw,
   SendHorizontal,
   Trash2,
   Umbrella,
@@ -30,7 +31,9 @@ import {
   createTeamActivity,
   deleteTeamActivityComment,
   deleteTeamActivity,
+  getGoogleCalendarEvents,
   getTeamActivities,
+  syncGoogleCalendar,
   updateTeamActivity,
 } from '../services/teamActivityService.js';
 import {
@@ -330,6 +333,10 @@ const PortalTeamPage = () => {
   const [isLeavingForTrips, setIsLeavingForTrips] = useState(false);
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [googleEvents, setGoogleEvents] = useState([]);
+  const [googleCalendarConfigured, setGoogleCalendarConfigured] = useState(false);
+  const [isGoogleSyncing, setIsGoogleSyncing] = useState(false);
+  const [googleCalendarMessage, setGoogleCalendarMessage] = useState('');
   const [vacations, setVacations] = useState([]);
   const [trips, setTrips] = useState([]);
   const [selectedDate, setSelectedDate] = useState(toDateInputValue(new Date()));
@@ -547,11 +554,12 @@ const PortalTeamPage = () => {
     setError('');
 
     try {
-      const [membersResponse, activitiesResponse, vacationsResponse, tripsResponse] = await Promise.all([
+      const [membersResponse, activitiesResponse, vacationsResponse, tripsResponse, googleResponse] = await Promise.all([
         getPortalMembers(portalId),
         getTeamActivities({ portalId, ...monthRange }),
         getTeamVacations({ portalId, ...vacationRange }),
         getBusinessTrips(portalId, monthRange),
+        getGoogleCalendarEvents({ portalId, ...monthRange }).catch(() => null),
       ]);
 
       const nextMembers = membersResponse.data || [];
@@ -559,6 +567,8 @@ const PortalTeamPage = () => {
       setActivities(activitiesResponse.data || activitiesResponse.activities || activitiesResponse || []);
       setVacations(vacationsResponse.data || vacationsResponse.vacations || vacationsResponse || []);
       setTrips(tripsResponse.data || tripsResponse.trips || tripsResponse || []);
+      setGoogleCalendarConfigured(Boolean(googleResponse?.configured));
+      setGoogleEvents(googleResponse?.data || []);
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'No se pudo cargar la actividad del equipo');
     } finally {
@@ -570,6 +580,29 @@ const PortalTeamPage = () => {
     loadTeamData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portalId, monthRange.startDate, monthRange.endDate, vacationRange.startDate, vacationRange.endDate]);
+
+  const handleGoogleCalendarSync = async () => {
+    if (!googleCalendarConfigured || isGoogleSyncing) return;
+
+    setIsGoogleSyncing(true);
+    setGoogleCalendarMessage('');
+    try {
+      const response = await syncGoogleCalendar({ portalId });
+      const result = response.data || {};
+      setGoogleCalendarMessage(
+        result.failed > 0
+          ? `Google Calendar: ${result.synchronized} sincronizadas, ${result.failed} con error.`
+          : `${result.synchronized} actividades sincronizadas con Google Calendar.`
+      );
+      await loadTeamData();
+    } catch (requestError) {
+      setGoogleCalendarMessage(
+        requestError.response?.data?.message || 'No se pudo sincronizar Google Calendar.'
+      );
+    } finally {
+      setIsGoogleSyncing(false);
+    }
+  };
 
   const calendarDays = useMemo(() => buildCalendarDays(monthCursor), [monthCursor]);
 
@@ -595,6 +628,15 @@ const PortalTeamPage = () => {
     return grouped;
   }, [calendarDays, visibleActivities]);
 
+  const googleEventsByDate = useMemo(() => {
+    const grouped = {};
+    calendarDays.forEach(({ date }) => {
+      const key = toDateInputValue(date);
+      grouped[key] = googleEvents.filter((event) => key >= event.workDate && key <= event.endDate);
+    });
+    return grouped;
+  }, [calendarDays, googleEvents]);
+
   const vacationsByDate = useMemo(() => {
     const grouped = {};
     calendarDays.forEach(({ date }) => {
@@ -614,6 +656,7 @@ const PortalTeamPage = () => {
   }, [calendarDays, visibleTrips]);
 
   const selectedActivities = activitiesByDate[selectedDate] || [];
+  const selectedGoogleEvents = googleEventsByDate[selectedDate] || [];
   const selectedTrips = tripsByDate[selectedDate] || [];
   const selectedHoliday = holidaysByDate[selectedDate];
   const minWorkDate = todayValue();
@@ -1920,6 +1963,36 @@ const PortalTeamPage = () => {
                         <Landmark size={13} />
                         Festivo Sevilla
                       </span>
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-black ${
+                          googleCalendarConfigured
+                            ? 'border-blue-100 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-slate-50 text-slate-500'
+                        }`}
+                        title={
+                          googleCalendarConfigured
+                            ? 'Eventos compartidos desde el calendario de Google'
+                            : 'Google Calendar pendiente de configuración en el servidor'
+                        }
+                      >
+                        <CalendarDays size={13} />
+                        {googleCalendarConfigured ? 'Google Calendar conectado' : 'Google Calendar no conectado'}
+                      </span>
+                      {googleCalendarConfigured && (
+                        <button
+                          type="button"
+                          onClick={handleGoogleCalendarSync}
+                          disabled={isGoogleSyncing}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[11px] font-black text-blue-700 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                          title="Sincronizar las actividades existentes"
+                        >
+                          <RefreshCw size={13} className={isGoogleSyncing ? 'animate-spin' : ''} />
+                          Sincronizar
+                        </button>
+                      )}
+                      {googleCalendarMessage && (
+                        <span className="text-[11px] font-bold text-blue-700">{googleCalendarMessage}</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1965,9 +2038,10 @@ const PortalTeamPage = () => {
 
                   <div className="mt-2 grid grid-cols-7 gap-1 md:mt-3 md:gap-2">
                 {calendarDays.map(({ date, isCurrentMonth }) => {
-                  const value = toDateInputValue(date);
-                  const dayActivities = activitiesByDate[value] || [];
-                  const dayVacations = vacationsByDate[value] || [];
+                   const value = toDateInputValue(date);
+                   const dayActivities = activitiesByDate[value] || [];
+                   const dayGoogleEvents = googleEventsByDate[value] || [];
+                   const dayVacations = vacationsByDate[value] || [];
                   const dayTrips = tripsByDate[value] || [];
                   const holiday = holidaysByDate[value];
                   const isSelected = value === selectedDate;
@@ -2042,6 +2116,22 @@ const PortalTeamPage = () => {
                           <span className="hidden truncate md:inline">{dayTrips[0].destination}</span>
                           {dayTrips.length > 1 && <span>+{dayTrips.length - 1}</span>}
                         </span>
+                      )}
+                      {dayGoogleEvents.length > 0 && (
+                        <div className="absolute left-1.5 top-7 max-w-[calc(50%-0.5rem)] md:left-2 md:top-9 md:max-w-[calc(50%-0.75rem)]">
+                          {dayGoogleEvents.slice(0, 2).map((event) => (
+                            <span
+                              key={event.id}
+                              className="mb-1 block truncate rounded-full bg-blue-500 px-1.5 py-0.5 text-[9px] font-black text-white shadow-sm md:px-2 md:text-[10px]"
+                              title={event.title}
+                            >
+                              {event.title}
+                            </span>
+                          ))}
+                          {dayGoogleEvents.length > 2 && (
+                            <span className="text-[9px] font-black text-blue-700">+{dayGoogleEvents.length - 2} Google</span>
+                          )}
+                        </div>
                       )}
                       {dayVacations.length > 0 && (
                         <div
@@ -2236,7 +2326,7 @@ const PortalTeamPage = () => {
                 <div className="flex min-h-48 items-center justify-center text-[#ff5a1f]">
                   <Loader2 className="animate-spin" />
                 </div>
-              ) : selectedActivities.length === 0 ? (
+               ) : selectedActivities.length === 0 && selectedGoogleEvents.length === 0 ? (
                 <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-orange-200 bg-[#fffaf5] text-center">
                   <UserRound size={32} className="text-[#ff5a1f]" />
                   <h3 className="mt-4 text-xl font-black">Aun no hay actividad este dia</h3>
@@ -2244,9 +2334,43 @@ const PortalTeamPage = () => {
                     Guarda una tarea para que el equipo sepa en que estas trabajando.
                   </p>
                 </div>
-              ) : (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <AnimatePresence initial={false}>
+               ) : (
+                 <div className="grid gap-4 lg:grid-cols-2">
+                   {selectedGoogleEvents.map((event) => (
+                     <motion.article
+                       key={event.id}
+                       layout
+                       initial={{ opacity: 0, y: 10 }}
+                       animate={{ opacity: 1, y: 0 }}
+                       className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 shadow-sm"
+                     >
+                       <div className="flex items-start gap-3">
+                         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-blue-600 shadow-sm">
+                           <CalendarDays size={19} />
+                         </span>
+                         <div className="min-w-0">
+                           <p className="text-sm font-black text-blue-700">Google Calendar · Compartido Evenor</p>
+                           <h3 className="mt-1 text-xl font-black">{event.title}</h3>
+                         </div>
+                       </div>
+                       {event.description && (
+                         <p className="mt-4 whitespace-pre-line text-sm leading-6 text-blue-900/80">
+                           {event.description}
+                         </p>
+                       )}
+                       {event.googleUrl && (
+                         <a
+                           href={event.googleUrl}
+                           target="_blank"
+                           rel="noreferrer"
+                           className="mt-4 inline-flex text-sm font-black text-blue-700 underline underline-offset-2"
+                         >
+                           Abrir en Google Calendar
+                         </a>
+                       )}
+                     </motion.article>
+                   ))}
+                   <AnimatePresence initial={false}>
                     {selectedActivities.map((activity) => {
                       const status = statusMeta(activity.status);
                       const priority = priorityMeta(activity.priority);
