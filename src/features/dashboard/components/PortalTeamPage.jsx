@@ -353,6 +353,153 @@ const getCalendarEventColor = (event, fallbackColor) => {
   return categoryKey === 'other' ? fallbackColor : GOOGLE_EVENT_CATEGORIES[categoryKey].color;
 };
 
+const SAFE_EVENT_HTML_TAGS = new Set([
+  'a',
+  'b',
+  'blockquote',
+  'br',
+  'div',
+  'em',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'i',
+  'li',
+  'ol',
+  'p',
+  'span',
+  'strong',
+  'table',
+  'tbody',
+  'td',
+  'th',
+  'thead',
+  'tr',
+  'u',
+  'ul',
+]);
+
+const BLOCKED_EVENT_HTML_TAGS = new Set([
+  'base',
+  'embed',
+  'form',
+  'iframe',
+  'input',
+  'link',
+  'meta',
+  'object',
+  'script',
+  'style',
+]);
+
+const escapeEventHtml = (value) =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const isSafeEventLink = (value) => /^(https?:|mailto:)/i.test(String(value || '').trim());
+
+const formatGoogleEventDescription = (value) => {
+  const source = String(value || '').trim();
+  if (!source) return '';
+
+  if (!/<\/?[a-z][\s\S]*>/i.test(source) || typeof document === 'undefined') {
+    return escapeEventHtml(source).replace(/\r?\n/g, '<br />');
+  }
+
+  const template = document.createElement('template');
+  template.innerHTML = source;
+
+  const sanitizeChildren = (parent) => {
+    Array.from(parent.children).forEach((element) => {
+      const tagName = element.tagName.toLowerCase();
+
+      if (BLOCKED_EVENT_HTML_TAGS.has(tagName)) {
+        element.remove();
+        return;
+      }
+
+      if (!SAFE_EVENT_HTML_TAGS.has(tagName)) {
+        element.replaceWith(...Array.from(element.childNodes));
+        sanitizeChildren(parent);
+        return;
+      }
+
+      Array.from(element.attributes).forEach((attribute) => {
+        const attributeName = attribute.name.toLowerCase();
+        const isLink = tagName === 'a' && attributeName === 'href' && isSafeEventLink(attribute.value);
+        const isTableSpan =
+          ['td', 'th'].includes(tagName) &&
+          ['colspan', 'rowspan'].includes(attributeName) &&
+          /^\d+$/.test(attribute.value);
+
+        if (!isLink && !isTableSpan) element.removeAttribute(attribute.name);
+      });
+
+      if (tagName === 'a') {
+        if (!isSafeEventLink(element.getAttribute('href'))) {
+          element.removeAttribute('href');
+        } else {
+          element.setAttribute('target', '_blank');
+          element.setAttribute('rel', 'noreferrer');
+        }
+      }
+
+      sanitizeChildren(element);
+    });
+  };
+
+  sanitizeChildren(template.content);
+  return template.innerHTML.replace(/(?:<br\s*\/?>(?:\s|&nbsp;)*){2,}/gi, '<br />');
+};
+
+const GoogleEventDescription = ({ description, category }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const formattedDescription = useMemo(
+    () => formatGoogleEventDescription(description),
+    [description]
+  );
+  const plainTextLength = formattedDescription
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim().length;
+  const canExpand = plainTextLength > 700;
+
+  return (
+    <div className="mt-3">
+      <div className={`relative ${canExpand && !isExpanded ? 'max-h-56 overflow-hidden' : ''}`}>
+        <div
+          className="overflow-x-auto text-sm leading-6 [&_a]:font-black [&_a]:underline [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-current [&_blockquote]:pl-3 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_table]:my-1 [&_table]:max-w-full [&_table]:border-collapse [&_td]:align-top [&_td]:p-1 [&_th]:align-top [&_th]:p-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+          style={{ color: category.textColor }}
+          dangerouslySetInnerHTML={{ __html: formattedDescription }}
+        />
+        {canExpand && !isExpanded && (
+          <span
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-12"
+            style={{ background: `linear-gradient(to bottom, transparent, ${category.softColor})` }}
+          />
+        )}
+      </div>
+      {canExpand && (
+        <button
+          type="button"
+          onClick={() => setIsExpanded((current) => !current)}
+          className="mt-2 cursor-pointer rounded-full border bg-white px-3 py-1.5 text-xs font-black shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+          style={{ borderColor: category.borderColor, color: category.textColor }}
+        >
+          {isExpanded ? 'Ver menos' : 'Ver más'}
+        </button>
+      )}
+    </div>
+  );
+};
+
 const countInclusiveDays = (startDate, endDate) => {
   if (!startDate || !endDate || startDate > endDate) return 0;
   const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
@@ -1243,7 +1390,7 @@ const PortalTeamPage = () => {
     const holiday = holidaysByDate[value];
     const isSelected = value === selectedDate;
     const isDailyView = calendarView === 'day';
-    const maxVisibleEvents = isDailyView ? 50 : calendarView === 'week' ? 12 : 5;
+    const maxVisibleEvents = isDailyView ? 50 : calendarView === 'week' ? 12 : 3;
     const events = [
       ...dayGoogleEvents.map((event) => {
         const category = getGoogleEventMeta(event);
@@ -1322,15 +1469,15 @@ const PortalTeamPage = () => {
           ))}
 
           {events.slice(0, maxVisibleEvents).map((event) => (
-            <span key={`${event.source}-${event.id}`} className="flex items-start gap-2 rounded-lg px-2.5 py-2 text-[10px] font-black leading-4 text-white shadow-sm md:text-xs md:leading-5" style={{ backgroundColor: event.color }} title={`${event.timeLabel} · ${event.title}`}>
-              <span className="shrink-0 rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-black md:text-[10px]">{event.timeLabel}</span>
-              <span className="min-w-0 break-words">{event.title}</span>
+            <span key={`${event.source}-${event.id}`} className="flex min-h-[66px] flex-col items-start rounded-lg px-2.5 py-2 text-[10px] font-black leading-4 text-white shadow-sm md:text-xs md:leading-5" style={{ backgroundColor: event.color }} title={`${event.timeLabel} · ${event.title}`}>
+              <span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-black md:text-[10px]">{event.timeLabel}</span>
+              <span className="mt-1 block max-h-10 min-w-0 overflow-hidden break-words">{event.title}</span>
             </span>
           ))}
 
           {events.length > maxVisibleEvents && (
             <span className="mt-auto rounded-lg border border-dashed border-orange-200 px-2.5 py-1.5 text-center text-[10px] font-black text-[#9a4a2f]">
-              +{events.length - maxVisibleEvents} eventos más
+              +{events.length - maxVisibleEvents} más
             </span>
           )}
 
@@ -2495,24 +2642,24 @@ const PortalTeamPage = () => {
                            <h3 className="mt-1 text-xl font-black">{event.title}</h3>
                          </div>
                        </div>
-                       <span className="mt-4 inline-flex rounded-full border bg-white px-3 py-1 text-xs font-black shadow-sm" style={{ borderColor: category.borderColor, color: category.textColor }}>
+                       <div className="mt-4 flex flex-wrap items-center gap-3">
+                       <span className="inline-flex rounded-full border bg-white px-3 py-1 text-xs font-black shadow-sm" style={{ borderColor: category.borderColor, color: category.textColor }}>
                          {event.timeLabel || 'Todo el día'}
                        </span>
-                       {event.description && (
-                         <p className="mt-4 whitespace-pre-line text-sm leading-6" style={{ color: category.textColor }}>
-                           {event.description}
-                         </p>
-                       )}
                        {event.googleUrl && (
                          <a
                            href={event.googleUrl}
                            target="_blank"
                            rel="noreferrer"
-                           className="mt-4 inline-flex text-sm font-black underline underline-offset-2"
-                           style={{ color: category.textColor }}
+                           className="inline-flex rounded-full border bg-white px-3 py-1.5 text-sm font-black shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                           style={{ borderColor: category.borderColor, color: category.textColor }}
                          >
                            Abrir en Google Calendar
                          </a>
+                       )}
+                       </div>
+                       {event.description && (
+                         <GoogleEventDescription description={event.description} category={category} />
                        )}
                      </motion.article>
                      );
