@@ -118,6 +118,8 @@ const isFilled = (value) => {
   return normalizedValue !== '' && !/^-+$/.test(normalizedValue);
 };
 
+const hasRowContent = (row) => Array.isArray(row?.values) && row.values.some(isFilled);
+
 const serializeCell = (value) => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString();
@@ -289,6 +291,15 @@ const opportunityDetailColumnGroups = [
     headers: ['E-mail', 'Email', 'Mail', 'Correo', 'Contacto'],
   },
 ];
+
+const hasOpportunityTableContent = (row, headers) =>
+  headers.some(
+    (header, index) =>
+      !isGeneratedHeader(header) &&
+      !opportunityDetailHeaders.has(normalizeHeader(header)) &&
+      isFilled(row.values?.[index])
+  );
+
 const embeddedContactHeaderGroups = [
   ...opportunityDetailColumnGroups.map((group) => group.headers),
   ['Nombre y apellidos', 'Name'],
@@ -1205,12 +1216,22 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
 
   const filteredRows = useMemo(() => {
     const rows = activeWorkbook?.rows || [];
+    const headers = activeWorkbook?.workbook?.headers || [];
+    const nonEmptyRows = isContactsLibrary
+      ? rows
+      : rows.filter(
+          (row) => hasRowContent(row) && hasOpportunityTableContent(row, headers)
+        );
     if (!isContactsLibrary) {
-      return pinFavoriteOpportunityGroups(rows, activeWorkbook?.workbook?.headers || [], favoriteOpportunityIds);
+      return pinFavoriteOpportunityGroups(
+        nonEmptyRows,
+        headers,
+        favoriteOpportunityIds
+      );
     }
 
     const normalizedSearch = searchValue.trim().toLocaleLowerCase('es');
-    const matchingRows = !normalizedSearch ? rows : rows.filter((row) =>
+    const matchingRows = !normalizedSearch ? nonEmptyRows : nonEmptyRows.filter((row) =>
       row.values.some((value) =>
         displayCell(value).toLocaleLowerCase('es').includes(normalizedSearch)
       ) ||
