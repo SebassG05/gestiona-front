@@ -75,6 +75,66 @@ const USER_ACTIVITY_COLORS = [
 ];
 
 const HOLIDAY_COLOR = '#7c3aed';
+const ACTIVITY_STATUS_COLORS = {
+  planned: '#2563eb',
+  in_progress: '#f97316',
+  blocked: '#dc2626',
+  done: '#059669',
+};
+
+const GOOGLE_EVENT_CATEGORIES = {
+  collaboration: {
+    label: 'Colaboración',
+    color: '#8b5cf6',
+    softColor: '#f5f3ff',
+    borderColor: '#ddd6fe',
+    textColor: '#6d28d9',
+  },
+  meeting: {
+    label: 'Reuniones y correos',
+    color: '#f97316',
+    softColor: '#fff7ed',
+    borderColor: '#fed7aa',
+    textColor: '#c2410c',
+  },
+  deadline: {
+    label: 'Plazos y cierres',
+    color: '#e11d48',
+    softColor: '#fff1f2',
+    borderColor: '#fecdd3',
+    textColor: '#be123c',
+  },
+  event: {
+    label: 'Eventos',
+    color: '#10b981',
+    softColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+    textColor: '#047857',
+  },
+  horizon: {
+    label: 'Horizon y proyectos',
+    color: '#0891b2',
+    softColor: '#ecfeff',
+    borderColor: '#a5f3fc',
+    textColor: '#0e7490',
+  },
+  other: {
+    label: 'Otros de Google Calendar',
+    color: '#2563eb',
+    softColor: '#eff6ff',
+    borderColor: '#bfdbfe',
+    textColor: '#1d4ed8',
+  },
+};
+
+const GOOGLE_EVENT_CATEGORY_ORDER = [
+  'collaboration',
+  'meeting',
+  'deadline',
+  'event',
+  'horizon',
+  'other',
+];
 
 const FIXED_SEVILLE_HOLIDAYS = [
   { month: 0, day: 1, name: 'Ano Nuevo', scope: 'Nacional' },
@@ -173,44 +233,45 @@ const getSevilleHolidays = (year) => {
   ];
 };
 
-const getMonthRange = (date) => {
-  const first = new Date(date.getFullYear(), date.getMonth(), 1);
-  const last = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  return {
-    startDate: toDateInputValue(first),
-    endDate: toDateInputValue(last),
-  };
-};
-
 const getYearRange = (date) => ({
   startDate: toDateInputValue(new Date(date.getFullYear(), 0, 1)),
   endDate: toDateInputValue(new Date(date.getFullYear(), 11, 31)),
 });
 
-const getMonthEndValue = (date) =>
-  toDateInputValue(new Date(date.getFullYear(), date.getMonth() + 1, 0));
+const getMonthRange = (date) => ({
+  startDate: toDateInputValue(new Date(date.getFullYear(), date.getMonth(), 1)),
+  endDate: toDateInputValue(new Date(date.getFullYear(), date.getMonth() + 1, 0)),
+});
 
-const buildCalendarDays = (monthDate) => {
-  const year = monthDate.getFullYear();
-  const month = monthDate.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+const buildWeekDays = (date) => {
+  const target = new Date(date);
+  const mondayOffset = (target.getDay() + 6) % 7;
+  const start = addDays(target, -mondayOffset);
+
+  return Array.from({ length: 7 }, (_, index) => ({
+    date: new Date(start.getFullYear(), start.getMonth(), start.getDate() + index),
+    isCurrentMonth: true,
+  }));
+};
+
+const buildMonthDays = (date) => {
+  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+  const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const startPadding = (firstDay.getDay() + 6) % 7;
   const days = [];
 
   for (let index = startPadding; index > 0; index -= 1) {
-    const date = new Date(year, month, 1 - index);
-    days.push({ date, isCurrentMonth: false });
+    const previousDate = new Date(date.getFullYear(), date.getMonth(), 1 - index);
+    days.push({ date: previousDate, isCurrentMonth: false });
   }
 
   for (let day = 1; day <= daysInMonth; day += 1) {
-    days.push({ date: new Date(year, month, day), isCurrentMonth: true });
+    days.push({ date: new Date(date.getFullYear(), date.getMonth(), day), isCurrentMonth: true });
   }
 
   let nextDay = 1;
   while (days.length % 7 !== 0) {
-    const date = new Date(year, month + 1, nextDay);
-    days.push({ date, isCurrentMonth: false });
+    days.push({ date: new Date(date.getFullYear(), date.getMonth() + 1, nextDay), isCurrentMonth: false });
     nextDay += 1;
   }
 
@@ -248,6 +309,44 @@ const getUserColor = (value) => {
   const sum = Array.from(source).reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return USER_ACTIVITY_COLORS[sum % USER_ACTIVITY_COLORS.length];
 };
+
+const getActivityMarkerColor = (activity) => {
+  return ACTIVITY_STATUS_COLORS[activity?.status] || getUserColor(activity?.assignedTo?.id || activity?.title);
+};
+
+const normalizeEventText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const getGoogleEventCategory = (event) => {
+  const text = normalizeEventText(`${event?.title || ''} ${event?.description || ''}`);
+
+  if (/potential collaboration|colaboracion|collaboration|partnership|partnering/.test(text)) {
+    return 'collaboration';
+  }
+
+  if (/deadline|cierre|justificacion|convocatoria|plazo|due date|jibble/.test(text)) {
+    return 'deadline';
+  }
+
+  if (/reunion|correo|meeting|call|llamada|follow[- ]?up/.test(text)) {
+    return 'meeting';
+  }
+
+  if (/\bevent\b|evento|webinar|conference|conferencia|workshop|taller/.test(text)) {
+    return 'event';
+  }
+
+  if (/horizon|\bcl[0-9]+\b/.test(text)) {
+    return 'horizon';
+  }
+
+  return 'other';
+};
+
+const getGoogleEventMeta = (event) => GOOGLE_EVENT_CATEGORIES[getGoogleEventCategory(event)];
 
 const countInclusiveDays = (startDate, endDate) => {
   if (!startDate || !endDate || startDate > endDate) return 0;
@@ -312,20 +411,8 @@ const isDateInVacation = (value, vacation) =>
 const isDateInTrip = (value, trip) =>
   trip?.status !== 'Cancelado' && trip?.startDate <= value && trip?.endDate >= value;
 
-const startsVacationSegment = (value, vacation, date) =>
-  vacation.startDate === value || date.getDay() === 1 || date.getDate() === 1;
-
-const endsVacationSegment = (value, vacation, date) =>
-  vacation.endDate === value || date.getDay() === 0 || value === getMonthEndValue(date);
-
 const getActivityEndValue = (activity) =>
   toDateInputValue(parseActivityDate(activity.endDate || activity.workDate));
-
-const startsActivitySegment = (value, activity, date) =>
-  toDateInputValue(parseActivityDate(activity.workDate)) === value || date.getDay() === 1 || date.getDate() === 1;
-
-const endsActivitySegment = (value, activity, date) =>
-  getActivityEndValue(activity) === value || date.getDay() === 0 || value === getMonthEndValue(date);
 
 const PortalTeamPage = () => {
   const { portalId } = useParams();
@@ -341,6 +428,7 @@ const PortalTeamPage = () => {
   const [trips, setTrips] = useState([]);
   const [selectedDate, setSelectedDate] = useState(toDateInputValue(new Date()));
   const [monthCursor, setMonthCursor] = useState(new Date());
+  const [calendarView, setCalendarView] = useState('month');
   const [form, setForm] = useState({
     ...emptyForm,
     workDate: toDateInputValue(new Date()),
@@ -500,8 +588,13 @@ const PortalTeamPage = () => {
     return trips.filter((trip) => getUserFilterId(trip.assignedTo) === personFilter);
   }, [isPersonFiltered, personFilter, trips]);
 
+  const weekRange = useMemo(() => getWeekRange(monthCursor), [monthCursor]);
+  const monthRange = useMemo(() => getMonthRange(monthCursor), [monthCursor]);
+  const dayRange = useMemo(() => ({ startDate: selectedDate, endDate: selectedDate }), [selectedDate]);
+  const calendarRange = calendarView === 'month' ? monthRange : calendarView === 'week' ? weekRange : dayRange;
+
   const weeklySummary = useMemo(() => {
-    const { startDate, endDate } = getWeekRange(new Date());
+    const { startDate, endDate } = weekRange;
     const weekActivities = activities.filter((activity) => {
       if (!activity.workDate) return false;
       const workDate = toDateInputValue(parseActivityDate(activity.workDate));
@@ -544,9 +637,8 @@ const PortalTeamPage = () => {
       vacationPeople: people.filter((person) => person.vacations.length > 0),
       totalActivities: weekActivities.length,
     };
-  }, [activities, personOptions, vacations]);
+  }, [activities, personOptions, vacations, weekRange]);
 
-  const monthRange = useMemo(() => getMonthRange(monthCursor), [monthCursor]);
   const vacationRange = useMemo(() => getYearRange(monthCursor), [monthCursor]);
 
   const loadTeamData = async () => {
@@ -556,10 +648,10 @@ const PortalTeamPage = () => {
     try {
       const [membersResponse, activitiesResponse, vacationsResponse, tripsResponse, googleResponse] = await Promise.all([
         getPortalMembers(portalId),
-        getTeamActivities({ portalId, ...monthRange }),
+        getTeamActivities({ portalId, ...calendarRange }),
         getTeamVacations({ portalId, ...vacationRange }),
-        getBusinessTrips(portalId, monthRange),
-        getGoogleCalendarEvents({ portalId, ...monthRange }).catch(() => null),
+        getBusinessTrips(portalId, calendarRange),
+        getGoogleCalendarEvents({ portalId, ...calendarRange }).catch(() => null),
       ]);
 
       const nextMembers = membersResponse.data || [];
@@ -579,7 +671,13 @@ const PortalTeamPage = () => {
   useEffect(() => {
     loadTeamData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portalId, monthRange.startDate, monthRange.endDate, vacationRange.startDate, vacationRange.endDate]);
+  }, [
+    calendarRange.endDate,
+    calendarRange.startDate,
+    portalId,
+    vacationRange.endDate,
+    vacationRange.startDate,
+  ]);
 
   const handleGoogleCalendarSync = async () => {
     if (!googleCalendarConfigured || isGoogleSyncing) return;
@@ -604,7 +702,42 @@ const PortalTeamPage = () => {
     }
   };
 
-  const calendarDays = useMemo(() => buildCalendarDays(monthCursor), [monthCursor]);
+  const calendarDays = useMemo(() => {
+    if (calendarView === 'month') return buildMonthDays(monthCursor);
+    if (calendarView === 'day') {
+      return [{ date: parseActivityDate(selectedDate), isCurrentMonth: true }];
+    }
+    return buildWeekDays(monthCursor);
+  }, [calendarView, monthCursor, selectedDate]);
+  const monthLabel = useMemo(
+    () => new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(monthCursor),
+    [monthCursor]
+  );
+  const dayLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat('es-ES', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(parseActivityDate(selectedDate)),
+    [selectedDate]
+  );
+  const weekLabel = useMemo(() => {
+    const start = parseActivityDate(weekRange.startDate);
+    const end = parseActivityDate(weekRange.endDate);
+    const startLabel = new Intl.DateTimeFormat('es-ES', {
+      day: 'numeric',
+      month: 'short',
+    }).format(start);
+    const endLabel = new Intl.DateTimeFormat('es-ES', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(end);
+
+    return `${startLabel} - ${endLabel}`;
+  }, [weekRange]);
 
   const holidaysByDate = useMemo(() => {
     const years = new Set(calendarDays.map(({ date }) => date.getFullYear()));
@@ -925,13 +1058,37 @@ const PortalTeamPage = () => {
     }
   };
 
-  const changeMonth = (amount) => {
-    setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
+  const changeCalendarPeriod = (amount) => {
+    const baseDate = calendarView === 'day' ? parseActivityDate(selectedDate) : monthCursor;
+    const nextCursor =
+      calendarView === 'month'
+        ? new Date(baseDate.getFullYear(), baseDate.getMonth() + amount, 1)
+        : addDays(baseDate, amount * (calendarView === 'week' ? 7 : 1));
+
+    setMonthCursor(nextCursor);
+    setSelectedDate(
+      calendarView === 'month'
+        ? toDateInputValue(new Date(nextCursor.getFullYear(), nextCursor.getMonth(), 1))
+        : calendarView === 'week'
+          ? getWeekRange(nextCursor).startDate
+          : toDateInputValue(nextCursor)
+    );
+  };
+
+  const handleCalendarViewChange = (view) => {
+    setCalendarView(view);
+    setMonthCursor(parseActivityDate(selectedDate));
   };
 
   const handleSelectDate = (date) => {
     const value = toDateInputValue(date);
     setSelectedDate(value);
+    if (
+      calendarView === 'month' &&
+      (date.getMonth() !== monthCursor.getMonth() || date.getFullYear() !== monthCursor.getFullYear())
+    ) {
+      setMonthCursor(date);
+    }
     if (!editingId) setForm((current) => ({ ...current, workDate: value, endDate: value }));
   };
 
@@ -1065,9 +1222,117 @@ const PortalTeamPage = () => {
     );
   };
 
+  const renderCalendarDay = ({ date, isCurrentMonth }) => {
+    const value = toDateInputValue(date);
+    const dayActivities = activitiesByDate[value] || [];
+    const dayGoogleEvents = googleEventsByDate[value] || [];
+    const dayVacations = vacationsByDate[value] || [];
+    const dayTrips = tripsByDate[value] || [];
+    const holiday = holidaysByDate[value];
+    const isSelected = value === selectedDate;
+    const isDailyView = calendarView === 'day';
+    const maxVisibleEvents = isDailyView ? 50 : calendarView === 'week' ? 12 : 5;
+    const events = [
+      ...dayGoogleEvents.map((event) => {
+        const category = getGoogleEventMeta(event);
+
+        return {
+        id: event.id,
+        title: event.title,
+        timeLabel: event.timeLabel || 'Todo el día',
+        color: category.color,
+        source: 'google',
+        };
+      }),
+      ...dayActivities.map((activity) => ({
+        id: activity.id,
+        title: activity.title,
+        timeLabel: activity.timeLabel || 'Todo el día',
+        color: getActivityMarkerColor(activity),
+        source: 'activity',
+      })),
+    ].sort((first, second) => {
+      if (first.timeLabel === 'Todo el día') return 1;
+      if (second.timeLabel === 'Todo el día') return -1;
+      return first.timeLabel.localeCompare(second.timeLabel);
+    });
+
+    return (
+      <motion.button
+        key={value}
+        type="button"
+        onClick={() => handleSelectDate(date)}
+        whileTap={{ scale: 0.99 }}
+        className={`group flex min-h-[190px] flex-col rounded-2xl border p-3 text-left transition md:min-h-[220px] md:rounded-[22px] md:p-4 ${
+          isDailyView ? 'min-h-[560px] md:min-h-[620px]' : ''
+        } ${
+          isSelected
+            ? 'border-[#ff5a1f] bg-[#fff3e7] shadow-[0_12px_30px_rgba(255,90,31,0.12)]'
+            : holiday && isCurrentMonth
+              ? 'border-violet-200 bg-violet-50/60 hover:border-violet-300'
+              : 'border-orange-100 bg-white hover:border-orange-300 hover:bg-orange-50/50'
+        } ${calendarView === 'month' && !isCurrentMonth ? 'opacity-45' : ''}`}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-orange-100 pb-3">
+          <div>
+            <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-[#ff5a1f] md:text-xs">
+              {new Intl.DateTimeFormat('es-ES', { weekday: 'short' }).format(date).replace('.', '')}
+            </span>
+            <span className="mt-1 block text-2xl font-black text-[#3b1208] md:text-3xl">{date.getDate()}</span>
+          </div>
+          {(events.length > 0 || dayTrips.length > 0 || dayVacations.length > 0) && (
+            <span className="rounded-full border border-orange-100 bg-white px-2 py-1 text-[10px] font-black text-[#9a4a2f] shadow-sm">
+              {events.length + dayTrips.length + dayVacations.length}
+            </span>
+          )}
+        </div>
+
+        <div className={`mt-3 flex min-h-0 flex-1 flex-col gap-2 ${isDailyView ? 'overflow-y-auto pr-1' : 'overflow-hidden'}`}>
+          {holiday && isCurrentMonth && (
+            <span className="inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-black text-white shadow-sm md:text-xs" style={{ backgroundColor: HOLIDAY_COLOR }}>
+              <Landmark size={12} />
+              <span className="truncate">{holiday.name}</span>
+            </span>
+          )}
+
+          {dayTrips.map((trip) => (
+            <span key={trip.id || trip._id} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[10px] font-black text-sky-700 md:text-xs" title={`${trip.title} - ${trip.destination}`}>
+              <PlaneTakeoff size={12} />
+              <span className="truncate">Viaje · {trip.destination}</span>
+            </span>
+          ))}
+
+          {dayVacations.slice(0, 3).map((vacation) => (
+            <span key={vacation.id || vacation._id} className="inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-black text-white shadow-sm md:text-xs" style={{ backgroundColor: getPersonColorForUser(vacation.user) }}>
+              <Umbrella size={12} />
+              <span className="truncate">Vacaciones · {getUserLabel(vacation.user)}</span>
+            </span>
+          ))}
+
+          {events.slice(0, maxVisibleEvents).map((event) => (
+            <span key={`${event.source}-${event.id}`} className="flex items-start gap-2 rounded-lg px-2.5 py-2 text-[10px] font-black leading-4 text-white shadow-sm md:text-xs md:leading-5" style={{ backgroundColor: event.color }} title={`${event.timeLabel} · ${event.title}`}>
+              <span className="shrink-0 rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-black md:text-[10px]">{event.timeLabel}</span>
+              <span className="min-w-0 break-words">{event.title}</span>
+            </span>
+          ))}
+
+          {events.length > maxVisibleEvents && (
+            <span className="mt-auto rounded-lg border border-dashed border-orange-200 px-2.5 py-1.5 text-center text-[10px] font-black text-[#9a4a2f]">
+              +{events.length - maxVisibleEvents} eventos más
+            </span>
+          )}
+
+          {events.length === 0 && dayTrips.length === 0 && dayVacations.length === 0 && !holiday && (
+            <span className="mt-auto text-[11px] font-semibold text-[#c58b70]">Sin eventos</span>
+          )}
+        </div>
+      </motion.button>
+    );
+  };
+
   return (
     <PortalSidebar>
-      <div className="relative min-h-screen overflow-hidden bg-[#fafafa] px-3 py-5 text-[#3b1208] md:px-10 md:py-8">
+      <div className="relative min-h-screen overflow-hidden bg-[#fafafa] px-3 py-5 text-[#3b1208] md:px-6 md:py-8 xl:px-8">
         <motion.svg
           className="pointer-events-none absolute inset-0 z-0 h-full w-full select-none"
           viewBox="0 0 1440 900"
@@ -1105,7 +1370,7 @@ const PortalTeamPage = () => {
           onAnimationComplete={() => {
             if (isLeavingForTrips) navigate(`/dashboard/portal/${portalId}/team/trips`);
           }}
-          className="relative z-10 mx-auto max-w-7xl space-y-4 md:space-y-6"
+          className="relative z-10 mx-auto w-full max-w-[1800px] space-y-4 md:space-y-6"
         >
           <section className="rounded-[20px] border border-orange-100 bg-white/90 p-5 shadow-sm md:rounded-[24px] md:p-7">
             <p className="text-sm font-semibold uppercase tracking-wide text-[#ff3f6c]">Equipo</p>
@@ -1943,7 +2208,7 @@ const PortalTeamPage = () => {
             </AnimatePresence>
 
             <section
-              className={`relative self-start overflow-visible rounded-[20px] border border-orange-100 bg-white/95 p-4 shadow-sm md:rounded-[24px] md:p-6 ${
+              className={`relative self-start overflow-visible rounded-[20px] border border-orange-100 bg-gradient-to-br from-white via-white to-[#fffaf5] p-4 shadow-[0_20px_60px_rgba(124,45,18,0.08)] md:rounded-[28px] md:p-7 ${
                 isSelectedPastDate ? '' : 'xl:min-h-[632px]'
               }`}
             >
@@ -1996,8 +2261,39 @@ const PortalTeamPage = () => {
                     </div>
                   </div>
                 </div>
-                <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-start">
-                  <button
+                   <div className="flex w-full flex-wrap items-center justify-between gap-2 md:w-auto md:justify-start">
+                    <div className="flex items-center rounded-xl border border-orange-200 bg-white p-1 shadow-sm">
+                      {[
+                        { value: 'month', label: 'Mes' },
+                        { value: 'week', label: 'Semana' },
+                        { value: 'day', label: 'Día' },
+                      ].map((view) => (
+                        <button
+                          key={view.value}
+                          type="button"
+                          onClick={() => handleCalendarViewChange(view.value)}
+                          className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-[11px] font-black transition md:px-3 ${
+                            calendarView === view.value
+                              ? 'bg-[#3b1208] text-white shadow-sm'
+                              : 'text-[#8b2f12] hover:bg-orange-50'
+                          }`}
+                        >
+                          {view.label}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                     type="button"
+                     onClick={() => {
+                       const today = new Date();
+                       setMonthCursor(today);
+                       setSelectedDate(toDateInputValue(today));
+                     }}
+                     className="hidden cursor-pointer rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-black text-[#8b2f12] transition hover:bg-orange-50 sm:inline-flex"
+                   >
+                     Hoy
+                   </button>
+                   <button
                     type="button"
                     onClick={handleOpenTaskForm}
                     className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-orange-200 bg-gradient-to-r from-[#ff5a00] to-[#ff3048] text-white shadow-sm shadow-orange-100 transition hover:-translate-y-0.5 hover:shadow-md"
@@ -2008,19 +2304,21 @@ const PortalTeamPage = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => changeMonth(-1)}
+                      onClick={() => changeCalendarPeriod(-1)}
                     className="cursor-pointer rounded-xl border border-orange-200 p-2 text-[#8b2f12] transition hover:bg-orange-50"
                   >
                     <ChevronLeft size={18} />
                   </button>
-                  <p className="min-w-0 flex-1 text-center text-sm font-black capitalize md:min-w-36 md:flex-none">
-                    {new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(
-                      monthCursor
-                    )}
+                    <p className="min-w-0 flex-1 text-center text-sm font-black capitalize md:min-w-52 md:flex-none">
+                      {calendarView === 'month'
+                        ? monthLabel
+                        : calendarView === 'week'
+                          ? `Semana ${weekLabel}`
+                          : dayLabel}
                   </p>
                   <button
                     type="button"
-                    onClick={() => changeMonth(1)}
+                      onClick={() => changeCalendarPeriod(1)}
                     className="cursor-pointer rounded-xl border border-orange-200 p-2 text-[#8b2f12] transition hover:bg-orange-50"
                   >
                     <ChevronRight size={18} />
@@ -2028,221 +2326,43 @@ const PortalTeamPage = () => {
                 </div>
               </div>
 
-              <div className="mt-5 md:mt-6">
-                <div className="min-w-0">
-                  <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase text-[#ff5a1f] md:gap-2 md:text-xs">
-                    {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day) => (
-                      <span key={day}>{day}</span>
-                    ))}
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-7 gap-1 md:mt-3 md:gap-2">
-                {calendarDays.map(({ date, isCurrentMonth }) => {
-                   const value = toDateInputValue(date);
-                   const dayActivities = activitiesByDate[value] || [];
-                   const dayGoogleEvents = googleEventsByDate[value] || [];
-                   const dayVacations = vacationsByDate[value] || [];
-                  const dayTrips = tripsByDate[value] || [];
-                  const holiday = holidaysByDate[value];
-                  const isSelected = value === selectedDate;
-                  const visibleDayVacations = dayVacations
-                    .map((vacation) => ({
-                      vacation,
-                      lane: vacationLaneByUser.get(getUserFilterId(vacation.user)) ?? 0,
-                    }))
-                    .filter(({ lane }) => lane < 2)
-                    .sort((first, second) => first.lane - second.lane);
-                  const occupiedVacationLanes = new Set(visibleDayVacations.map(({ lane }) => lane));
-                  const activityByFreeLane = new Map();
-                  const dottedActivities = [];
-                  dayActivities.forEach((activity) => {
-                    const activityUser = activity.assignedTo || activity.createdBy || currentUser;
-                    const lane = vacationLaneByUser.get(getUserFilterId(activityUser));
-                    if (
-                      dayVacations.length > 0 &&
-                      lane !== undefined &&
-                      lane < 2 &&
-                      !occupiedVacationLanes.has(lane) &&
-                      !activityByFreeLane.has(lane)
-                    ) {
-                      activityByFreeLane.set(lane, activity);
-                    } else {
-                      dottedActivities.push(activity);
-                    }
-                  });
-                  const activityItems = dottedActivities.map((activity) => ({
-                      id: activity.id,
-                      color: getPersonColorForUser(activity.assignedTo || activity.createdBy || currentUser),
-                      label: activity.title,
-                    }));
+              <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-orange-100 pt-4 text-[11px] font-bold text-[#7c3a24] md:gap-3 md:text-xs">
+                <span className="mr-1 uppercase tracking-[0.16em] text-[#9a4a2f]">Leyenda</span>
+                {STATUS_OPTIONS.map((status) => (
+                  <span key={status.value} className="inline-flex items-center gap-1.5 rounded-full border border-orange-100 bg-white px-2.5 py-1.5 shadow-sm">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ACTIVITY_STATUS_COLORS[status.value] }} />
+                    {status.label}
+                  </span>
+                ))}
+                {GOOGLE_EVENT_CATEGORY_ORDER.map((categoryKey) => {
+                  const category = GOOGLE_EVENT_CATEGORIES[categoryKey];
 
                   return (
-                    <motion.button
-                      key={value}
-                      type="button"
-                      onClick={() => handleSelectDate(date)}
-                      whileTap={{ scale: 0.97 }}
-                      animate={isSelected ? { scale: 1.02 } : { scale: 1 }}
-                      transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                      title={
-                        holiday ? `${holiday.name} - Festivo ${holiday.scope || 'Sevilla'}` : undefined
-                      }
-                      className={`relative min-h-[92px] cursor-pointer overflow-hidden rounded-xl border p-1.5 text-left transition md:min-h-32 md:rounded-2xl md:p-3 ${
-                        isSelected
-                          ? 'border-[#ff5a1f] bg-[#fff3e7] shadow-sm'
-                          : holiday && isCurrentMonth
-                            ? 'border-violet-200 bg-violet-50/70 hover:border-violet-300 hover:bg-violet-50'
-                            : 'border-orange-100 bg-white hover:border-orange-300 hover:bg-orange-50/60'
-                      } ${!isCurrentMonth ? 'opacity-45' : ''}`}
+                    <span
+                      key={categoryKey}
+                      className="inline-flex items-center gap-1.5 rounded-full border bg-white px-2.5 py-1.5 shadow-sm"
+                      style={{ borderColor: category.borderColor, color: category.textColor }}
                     >
-                      <span className="absolute left-2 top-2 text-xs font-black md:left-3 md:top-3 md:text-sm">{date.getDate()}</span>
-                      {holiday && isCurrentMonth && (
-                        <motion.span
-                          initial={{ opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="absolute left-1.5 top-7 inline-flex max-w-[calc(100%-0.75rem)] items-center gap-1 rounded-full px-1 py-0.5 text-[9px] font-black text-white shadow-sm md:left-3 md:top-9 md:max-w-[calc(100%-1.5rem)] md:px-2 md:text-[10px]"
-                          style={{ backgroundColor: HOLIDAY_COLOR }}
-                        >
-                          <Landmark size={10} />
-                          <span className="hidden truncate md:inline">{holiday.name}</span>
-                        </motion.span>
-                      )}
-                      {dayTrips.length > 0 && (
-                        <span
-                          className="absolute right-1.5 top-7 inline-flex max-w-[calc(100%-0.75rem)] items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-1 py-0.5 text-[9px] font-black text-sky-700 shadow-sm md:right-2 md:top-9 md:max-w-[calc(100%-1rem)] md:px-2 md:text-[10px]"
-                          title={dayTrips.map((trip) => `${trip.title} - ${trip.destination}`).join(', ')}
-                        >
-                          <PlaneTakeoff size={10} />
-                          <span className="hidden truncate md:inline">{dayTrips[0].destination}</span>
-                          {dayTrips.length > 1 && <span>+{dayTrips.length - 1}</span>}
-                        </span>
-                      )}
-                      {dayGoogleEvents.length > 0 && (
-                        <div className="absolute left-1.5 top-7 max-w-[calc(50%-0.5rem)] md:left-2 md:top-9 md:max-w-[calc(50%-0.75rem)]">
-                          {dayGoogleEvents.slice(0, 2).map((event) => (
-                            <span
-                              key={event.id}
-                              className="mb-1 block truncate rounded-full bg-blue-500 px-1.5 py-0.5 text-[9px] font-black text-white shadow-sm md:px-2 md:text-[10px]"
-                              title={event.title}
-                            >
-                              {event.title}
-                            </span>
-                          ))}
-                          {dayGoogleEvents.length > 2 && (
-                            <span className="text-[9px] font-black text-blue-700">+{dayGoogleEvents.length - 2} Google</span>
-                          )}
-                        </div>
-                      )}
-                      {dayVacations.length > 0 && (
-                        <div
-                          className={`pointer-events-none absolute left-0 right-0 h-11 ${
-                            (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-12 md:top-16' : 'top-8 md:top-10'
-                          }`}
-                        >
-                          {visibleDayVacations.map(({ vacation, lane }) => {
-                            const vacationKey = vacation.id || vacation._id;
-                            const vacationUserLabel = getUserLabel(vacation.user);
-                            const vacationColor = getPersonColorForUser(vacation.user);
-                            const starts = startsVacationSegment(value, vacation, date);
-                            const ends = endsVacationSegment(value, vacation, date);
-
-                            return (
-                              <span
-                                key={vacationKey}
-                                className={`absolute left-0 right-0 block h-4 truncate px-0 text-[9px] font-black leading-4 text-white shadow-sm md:h-5 md:px-2 md:text-[10px] md:leading-5 ${
-                                  starts ? 'ml-2 rounded-l-full' : ''
-                                } ${ends ? 'mr-2 rounded-r-full' : ''}`}
-                                style={{ backgroundColor: vacationColor, top: `${lane * 24}px` }}
-                                title={`${vacationUserLabel} de vacaciones`}
-                              >
-                                <span className="hidden md:inline">Vacaciones</span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {dayVacations.length > 0 && activityByFreeLane.size > 0 && (
-                        <div
-                          className={`pointer-events-none absolute left-0 right-0 h-11 ${
-                            (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-12 md:top-16' : 'top-8 md:top-10'
-                          }`}
-                        >
-                          {[...activityByFreeLane.entries()].map(([lane, activity]) => {
-                            const personLabel = getUserLabel(activity.assignedTo || activity.createdBy || currentUser);
-                            const markerColor = getPersonColorForUser(activity.assignedTo || activity.createdBy || currentUser);
-                            const starts = startsActivitySegment(value, activity, date);
-                            const ends = endsActivitySegment(value, activity, date);
-                            return (
-                              <span
-                                key={activity.id}
-                                className={`absolute left-0 right-0 block h-4 truncate px-0 text-[9px] font-black leading-4 text-white shadow-sm md:h-5 md:px-2 md:text-[10px] md:leading-5 ${
-                                  starts ? 'ml-2 rounded-l-full' : ''
-                                } ${ends ? 'mr-2 rounded-r-full' : ''}`}
-                                style={{ backgroundColor: markerColor, top: `${lane * 24}px` }}
-                                title={`${personLabel} - ${activity.title}`}
-                              >
-                                <span className="hidden md:inline">{starts ? activity.title : ''}</span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {dayActivities.length > 0 && dayVacations.length === 0 && (
-                      <div
-                        className={`pointer-events-none absolute left-0 right-0 space-y-1 ${
-                          (holiday && isCurrentMonth) || dayTrips.length > 0 ? 'top-12 md:top-16' : 'top-8 md:top-10'
-                        }`}
-                      >
-                        {dayActivities.slice(0, 2).map((activity) => {
-                          const personLabel = getUserLabel(activity.assignedTo || activity.createdBy || currentUser);
-                          const markerColor = getPersonColorForUser(
-                            activity.assignedTo || activity.createdBy || currentUser
-                          );
-                          const starts = startsActivitySegment(value, activity, date);
-                          const ends = endsActivitySegment(value, activity, date);
-
-                          return (
-                            <motion.span
-                              key={activity.id}
-                              initial={{ opacity: 0, scaleX: 0.9 }}
-                              animate={{ opacity: 1, scaleX: 1 }}
-                              className={`block h-4 truncate px-0 text-[9px] font-black leading-4 text-white shadow-sm md:h-5 md:px-2 md:text-[10px] md:leading-5 ${
-                                starts ? 'ml-2 rounded-l-full' : ''
-                              } ${ends ? 'mr-2 rounded-r-full' : ''}`}
-                              style={{ backgroundColor: markerColor }}
-                              title={`${personLabel} - ${activity.title}`}
-                            >
-                              <span className="hidden md:inline">{starts ? activity.title : ''}</span>
-                            </motion.span>
-                          );
-                        })}
-                      </div>
-                      )}
-                      {dottedActivities.length > 0 && dayVacations.length > 0 && (
-                        <div
-                          className="pointer-events-none absolute bottom-1 left-1 right-1 flex h-5 items-center gap-1 px-0.5 md:bottom-2 md:left-2 md:right-2 md:h-6 md:gap-1.5 md:px-1"
-                          title={activityItems.map((item) => item.label).join(', ')}
-                        >
-                          <span className="flex min-w-0 items-center gap-1">
-                            {activityItems.slice(0, 4).map((item) => (
-                              <span
-                                key={`${item.id}-${item.label}`}
-                                className="h-2.5 w-2.5 rounded-full border border-white shadow-sm ring-1 ring-orange-100 md:h-3 md:w-3 md:border-2"
-                                style={{ backgroundColor: item.color }}
-                              />
-                            ))}
-                          </span>
-                          {dottedActivities.length > 4 && <span className="text-[9px] font-black text-[#9b3f22]">+{dottedActivities.length - 4}</span>}
-                        </div>
-                      )}
-                      {dayVacations.length === 0 && dayActivities.length > 2 && (
-                        <span className="absolute right-1 top-1 rounded-full border border-orange-100 bg-white px-1 py-0.5 text-[8px] font-black text-[#ff5a1f] shadow-sm md:right-2 md:top-2 md:px-2 md:text-[9px]">
-                          +{dayActivities.length - 2}
-                        </span>
-                      )}
-                    </motion.button>
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: category.color }} />
+                      {category.label}
+                    </span>
                   );
                 })}
+              </div>
+
+              <div className="mt-5 md:mt-6">
+                <div className="min-w-0">
+                  {calendarView === 'month' && (
+                    <div className="grid grid-cols-7 gap-2 text-center md:gap-3">
+                      {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day) => (
+                        <span key={day} className="rounded-xl bg-[#fff8f1] py-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#ff5a1f] md:py-2.5 md:text-xs">
+                          {day}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className={`mt-3 grid gap-2 md:mt-4 md:gap-3 ${calendarView === 'day' ? 'grid-cols-1' : 'grid-cols-7'}`}>
+                    {calendarDays.map(renderCalendarDay)}
                   </div>
                 </div>
               </div>
@@ -2336,25 +2456,34 @@ const PortalTeamPage = () => {
                 </div>
                ) : (
                  <div className="grid gap-4 lg:grid-cols-2">
-                   {selectedGoogleEvents.map((event) => (
+                   {selectedGoogleEvents.map((event) => {
+                     const category = getGoogleEventMeta(event);
+
+                     return (
                      <motion.article
                        key={event.id}
                        layout
                        initial={{ opacity: 0, y: 10 }}
                        animate={{ opacity: 1, y: 0 }}
-                       className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 shadow-sm"
+                       className="rounded-2xl border p-5 shadow-sm"
+                       style={{ borderColor: category.borderColor, backgroundColor: category.softColor }}
                      >
                        <div className="flex items-start gap-3">
-                         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-blue-600 shadow-sm">
+                         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white shadow-sm" style={{ color: category.color }}>
                            <CalendarDays size={19} />
                          </span>
                          <div className="min-w-0">
-                           <p className="text-sm font-black text-blue-700">Google Calendar · Compartido Evenor</p>
+                           <p className="text-sm font-black" style={{ color: category.textColor }}>
+                             Google Calendar · {category.label}
+                           </p>
                            <h3 className="mt-1 text-xl font-black">{event.title}</h3>
                          </div>
                        </div>
+                       <span className="mt-4 inline-flex rounded-full border bg-white px-3 py-1 text-xs font-black shadow-sm" style={{ borderColor: category.borderColor, color: category.textColor }}>
+                         {event.timeLabel || 'Todo el día'}
+                       </span>
                        {event.description && (
-                         <p className="mt-4 whitespace-pre-line text-sm leading-6 text-blue-900/80">
+                         <p className="mt-4 whitespace-pre-line text-sm leading-6" style={{ color: category.textColor }}>
                            {event.description}
                          </p>
                        )}
@@ -2363,13 +2492,15 @@ const PortalTeamPage = () => {
                            href={event.googleUrl}
                            target="_blank"
                            rel="noreferrer"
-                           className="mt-4 inline-flex text-sm font-black text-blue-700 underline underline-offset-2"
+                           className="mt-4 inline-flex text-sm font-black underline underline-offset-2"
+                           style={{ color: category.textColor }}
                          >
                            Abrir en Google Calendar
                          </a>
                        )}
                      </motion.article>
-                   ))}
+                     );
+                   })}
                    <AnimatePresence initial={false}>
                     {selectedActivities.map((activity) => {
                       const status = statusMeta(activity.status);
