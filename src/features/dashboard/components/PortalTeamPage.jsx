@@ -656,7 +656,13 @@ const PortalTeamPage = () => {
         getTeamActivities({ portalId, ...calendarRange }),
         getTeamVacations({ portalId, ...vacationRange }),
         getBusinessTrips(portalId, calendarRange),
-        getGoogleCalendarEvents({ portalId, ...calendarRange }).catch(() => null),
+        getGoogleCalendarEvents({ portalId, ...calendarRange }).catch((requestError) => ({
+          configured: false,
+          data: [],
+          error:
+            requestError.response?.data?.message ||
+            'No se pudo conectar con Google Calendar desde el servidor.',
+        })),
       ]);
 
       const nextMembers = membersResponse.data || [];
@@ -666,6 +672,7 @@ const PortalTeamPage = () => {
       setTrips(tripsResponse.data || tripsResponse.trips || tripsResponse || []);
       setGoogleCalendarConfigured(Boolean(googleResponse?.configured));
       setGoogleEvents(googleResponse?.data || []);
+      setGoogleCalendarMessage(googleResponse?.error || '');
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'No se pudo cargar la actividad del equipo');
     } finally {
@@ -2242,11 +2249,15 @@ const PortalTeamPage = () => {
                         title={
                           googleCalendarConfigured
                             ? 'Eventos compartidos desde el calendario de Google'
-                            : 'Google Calendar pendiente de configuración en el servidor'
+                            : googleCalendarMessage || 'Google Calendar pendiente de configuración en el servidor'
                         }
                       >
                         <CalendarDays size={13} />
-                        {googleCalendarConfigured ? 'Google Calendar conectado' : 'Google Calendar no conectado'}
+                        {googleCalendarConfigured
+                          ? 'Google Calendar conectado'
+                          : googleCalendarMessage
+                            ? 'Google Calendar con error'
+                            : 'Google Calendar no conectado'}
                       </span>
                       {googleCalendarConfigured && (
                         <button
