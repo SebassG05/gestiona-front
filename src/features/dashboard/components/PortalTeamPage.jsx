@@ -348,6 +348,11 @@ const getGoogleEventCategory = (event) => {
 
 const getGoogleEventMeta = (event) => GOOGLE_EVENT_CATEGORIES[getGoogleEventCategory(event)];
 
+const getCalendarEventColor = (event, fallbackColor) => {
+  const categoryKey = getGoogleEventCategory(event);
+  return categoryKey === 'other' ? fallbackColor : GOOGLE_EVENT_CATEGORIES[categoryKey].color;
+};
+
 const countInclusiveDays = (startDate, endDate) => {
   if (!startDate || !endDate || startDate > endDate) return 0;
   const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
@@ -1240,7 +1245,7 @@ const PortalTeamPage = () => {
         id: event.id,
         title: event.title,
         timeLabel: event.timeLabel || 'Todo el día',
-        color: category.color,
+          color: getCalendarEventColor(event, category.color),
         source: 'google',
         };
       }),
@@ -1248,7 +1253,7 @@ const PortalTeamPage = () => {
         id: activity.id,
         title: activity.title,
         timeLabel: activity.timeLabel || 'Todo el día',
-        color: getActivityMarkerColor(activity),
+        color: getCalendarEventColor(activity, getActivityMarkerColor(activity)),
         source: 'activity',
       })),
     ].sort((first, second) => {
