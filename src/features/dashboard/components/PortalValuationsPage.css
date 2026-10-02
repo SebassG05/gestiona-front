@@ -1,0 +1,165 @@
+.valuations-page,
+.valuation-dialog {
+  color-scheme: light;
+}
+
+.valuations-page button:focus-visible,
+.valuation-dialog button:focus-visible {
+  outline: 2px solid #ea580c;
+  outline-offset: 3px;
+}
+
+.valuation-filters label {
+  min-width: 0;
+}
+
+.valuation-filters label > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #57534e;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.valuation-filters select {
+  text-overflow: ellipsis;
+}
+
+.valuation-stat {
+  border-color: #e7e5e4;
+  background: #fafaf9;
+}
+
+.valuation-stat[data-tone='orange'] { background: #fff7ed; border-color: #ffedd5; }
+.valuation-stat[data-tone='green'] { background: #f2faf6; border-color: #dceee4; }
+.valuation-stat[data-tone='amber'] { background: #fffbeb; border-color: #fef3c7; }
+.valuation-stat[data-tone='violet'] { background: #f8f6ff; border-color: #ede9fe; }
+.valuation-stat[data-tone='orange'] .valuation-stat-icon { background: #ffedd5; color: #c2410c; }
+.valuation-stat[data-tone='green'] .valuation-stat-icon { background: #dcfce7; color: #15803d; }
+.valuation-stat[data-tone='amber'] .valuation-stat-icon { background: #fef3c7; color: #a16207; }
+.valuation-stat[data-tone='violet'] .valuation-stat-icon { background: #ede9fe; color: #7c3aed; }
+
+.valuation-table tbody tr:nth-child(even) > :is(td, th) {
+  background-color: #fcfbfa;
+}
+
+.valuation-table tbody tr:is(:hover, :focus-within) > :is(td, th) {
+  background-color: #fff7ed;
+}
+
+.valuation-table tr > :first-child {
+  border-right: 1px solid #ffedd5;
+}
+
+.valuation-table tr > :last-child {
+  border-left: 1px solid #ffedd5;
+  box-shadow: -5px 0 12px -8px rgb(67 20 7 / 24%);
+}
+
+.valuation-table .valuation-disclosure {
+  cursor: text;
+  user-select: text;
+}
+
+/* Leave room for the contents when the action column stays visible on phones. */
+@media (max-width: 639px) {
+  .valuation-table tr > :first-child {
+    position: static;
+  }
+
+  .valuation-table tr > :last-child {
+    width: 100px;
+    min-width: 100px;
+    padding-inline: 8px;
+  }
+}
+
+.valuation-text-preview {
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+
+.valuation-disclosure-chevron {
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.valuation-disclosure[data-expanded='true'] .valuation-disclosure-chevron {
+  transform: rotate(180deg);
+}
+
+.valuations-page button,
+.valuation-dialog button {
+  transition: background-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease, transform 160ms ease;
+}
+
+.valuations-page button:active:not(:disabled),
+.valuation-dialog button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.valuations-page td,
+.valuations-page th {
+  transition: background-color 180ms ease;
+}
+
+@keyframes valuation-reveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes valuation-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .valuation-enter {
+    animation: valuation-reveal 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .valuation-register { animation-delay: 70ms; }
+  .valuation-help { animation-delay: 140ms; }
+
+  .valuation-stat {
+    animation: valuation-reveal 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    transition: transform 180ms ease, box-shadow 180ms ease;
+  }
+
+  .valuation-stat:nth-child(1) { animation-delay: 80ms; }
+  .valuation-stat:nth-child(2) { animation-delay: 120ms; }
+  .valuation-stat:nth-child(3) { animation-delay: 160ms; }
+  .valuation-stat:nth-child(4) { animation-delay: 200ms; }
+
+  .valuation-row {
+    animation: valuation-fade 260ms ease var(--valuation-delay, 0ms) backwards;
+  }
+
+  .valuation-dialog::backdrop {
+    animation: valuation-fade 220ms ease both;
+  }
+
+  .valuation-dialog[data-closing='true']::backdrop {
+    animation: valuation-fade 220ms ease reverse both;
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .valuation-stat:hover {
+    translate: 0 -2px;
+    box-shadow: 0 8px 20px rgb(249 115 22 / 8%);
+  }
+
+  .valuation-stat { transition: translate 180ms ease, box-shadow 180ms ease; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .valuations-page *,
+  .valuation-dialog * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .valuations-page button:active:not(:disabled),
+  .valuation-dialog button:active:not(:disabled) {
+    transform: none;
+  }
+}
