@@ -31,7 +31,7 @@ import {
   LogOut,
   Menu,
   Settings,
-  SquareChartGantt,
+  ListChecks,
   Users,
   ClipboardCheck,
   ChartNoAxesCombined,
@@ -57,7 +57,7 @@ const navigationItems = [
   { label: 'Oportunidades', icon: BriefcaseBusiness, path: 'opportunities' },
   { label: 'Contactos', icon: ContactRound, path: 'contacts' },
   { label: 'Equipo', icon: Users, path: 'team' },
-  { label: 'Gantt', icon: SquareChartGantt, path: 'gantt' },
+  { label: 'Valoraciones', icon: ListChecks, path: 'valuations' },
   { label: 'Documentos', icon: FileText, path: 'documents' },
   { label: 'Ajustes', icon: Settings, path: 'settings' },
 ];
@@ -79,7 +79,7 @@ const getNavigationStorageKey = (portalId) =>
 
 const normalizeNavigationOrder = (storedOrder) => {
   const validIds = Array.isArray(storedOrder)
-    ? storedOrder.filter((id) => defaultNavigationOrder.includes(id))
+    ? storedOrder.map((id) => id === 'gantt' ? 'valuations' : id).filter((id) => defaultNavigationOrder.includes(id))
     : [];
   return [...new Set([...validIds, ...defaultNavigationOrder])];
 };

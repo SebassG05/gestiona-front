@@ -51,6 +51,14 @@ export const importOpportunityWorkbook = async ({ portalId, data }) => {
   return response.data;
 };
 
+export const mergeContactWorkbooks = async ({ portalId, sourceWorkbookId, targetWorkbookId }) => {
+  const response = await api.post(`${workbookPath(portalId)}/contacts/merge`, {
+    sourceWorkbookId,
+    targetWorkbookId,
+  });
+  return response.data;
+};
+
 export const reorderOpportunityWorkbooks = async ({ portalId, category, workbookIds }) => {
   const response = await api.patch(`${workbookPath(portalId)}/reorder`, {
     category,

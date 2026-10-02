@@ -10,6 +10,7 @@ import PortalOpportunitiesPage from '../features/dashboard/components/PortalOppo
 import OpportunityConceptNotePage from '../features/dashboard/components/OpportunityConceptNotePage.jsx';
 import PortalSettingsPage from '../features/dashboard/components/PortalSettingsPage.jsx';
 import PortalTeamPage from '../features/dashboard/components/PortalTeamPage.jsx';
+import PortalValuationsPage from '../features/dashboard/components/PortalValuationsPage.jsx';
 import PortalBusinessTripsPage from '../features/dashboard/components/PortalBusinessTripsPage.jsx';
 import ProposalContactsPage from '../features/dashboard/components/ProposalContactsPage.jsx';
 import PortalProposalsPage from '../features/dashboard/components/PortalProposalsPage.jsx';
@@ -169,6 +170,14 @@ const AppRouter = () => {
               <PortalOpportunitiesPage libraryType="contacts" />
             </ProtectedRoute>
           }
+        />
+        <Route
+          path="/dashboard/portal/:portalId/valuations"
+          element={<ProtectedRoute><PortalValuationsPage /></ProtectedRoute>}
+        />
+        <Route
+          path="/dashboard/portal/:portalId/gantt"
+          element={<Navigate to="../valuations" relative="path" replace />}
         />
         <Route
           path="/dashboard/portal/:portalId/team"

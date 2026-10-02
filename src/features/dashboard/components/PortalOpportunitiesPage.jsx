@@ -32,6 +32,7 @@ import {
   FilePenLine,
   Filter,
   FileSpreadsheet,
+  GitMerge,
   Plus,
   Loader2,
   Mail,
@@ -59,6 +60,7 @@ import {
   getOpportunityWorkbooks,
   importOpportunityWorkbook,
   linkContactsToOpportunityRow,
+  mergeContactWorkbooks,
   promoteOpportunitiesToProposals,
   searchOpportunityWorkbooks,
   unlinkContactFromOpportunityRow,
@@ -897,6 +899,9 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [workbookToDelete, setWorkbookToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [contactMergeModal, setContactMergeModal] = useState(null);
+  const [isMergingContacts, setIsMergingContacts] = useState(false);
+  const [contactMergeError, setContactMergeError] = useState('');
   const [isCopyMenuOpen, setIsCopyMenuOpen] = useState(false);
   const [globalSearchValue, setGlobalSearchValue] = useState('');
   const [globalResults, setGlobalResults] = useState([]);
@@ -2083,6 +2088,32 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
     }
   };
 
+  const handleMergeContactWorkbooks = async ({ sourceWorkbookId, targetWorkbookId }) => {
+    if (isMergingContacts) return;
+    setIsMergingContacts(true);
+    setErrorMessage('');
+    setContactMergeError('');
+
+    try {
+      const response = await mergeContactWorkbooks({
+        portalId,
+        sourceWorkbookId,
+        targetWorkbookId,
+      });
+      const movedRows = response.data?.movedRows || 0;
+      const targetName = response.data?.targetWorkbook?.name || 'el Excel destino';
+      setContactMergeModal(null);
+      setActiveWorkbook(null);
+      setWorkbookReloadKey((current) => current + 1);
+      setNotice(`${movedRows} contacto${movedRows === 1 ? '' : 's'} unido${movedRows === 1 ? '' : 's'} en ${targetName}.`);
+      await loadWorkbooks(targetWorkbookId);
+    } catch (error) {
+      setContactMergeError(error.response?.data?.message || 'No se pudieron unir los Excel de contactos.');
+    } finally {
+      setIsMergingContacts(false);
+    }
+  };
+
   const handleCopyColumn = async (column) => {
     const columnContent = filteredRows
       .map((row) => {
@@ -2579,6 +2610,17 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
                           />
                         </button>
                       </div>
+                      {isContactsLibrary && canDeletePages && workbooks.length > 1 && <button
+                        type="button"
+                        onClick={() => {
+                          setContactMergeError('');
+                          setContactMergeModal({ sourceWorkbookId: activeWorkbook.workbook._id });
+                        }}
+                        className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-violet-100 bg-white px-4 py-3 text-sm font-semibold text-violet-700 transition hover:bg-violet-50"
+                      >
+                        <GitMerge size={16} />
+                        Unir Excel
+                      </button>}
                       {canDeletePages && <button
                         type="button"
                         onClick={() => setWorkbookToDelete(activeWorkbook.workbook)}
@@ -3209,6 +3251,20 @@ const PortalOpportunitiesPage = ({ libraryType = 'opportunities' }) => {
               isImporting={isImporting}
               onCancel={() => setImportPreview(null)}
               onImport={handleImport}
+            />
+          )}
+
+          {contactMergeModal && (
+            <ContactWorkbookMergeModal
+              workbooks={workbooks}
+              sourceWorkbookId={contactMergeModal.sourceWorkbookId}
+              isMerging={isMergingContacts}
+              errorMessage={contactMergeError}
+              onCancel={() => {
+                setContactMergeError('');
+                setContactMergeModal(null);
+              }}
+              onConfirm={handleMergeContactWorkbooks}
             />
           )}
         </AnimatePresence>
@@ -3882,6 +3938,127 @@ const ImportModal = ({ preview, copy, isImporting, onCancel, onImport }) => (
     </motion.div>
   </motion.div>
 );
+
+const ContactWorkbookMergeModal = ({
+  workbooks,
+  sourceWorkbookId: initialSourceWorkbookId,
+  isMerging,
+  errorMessage,
+  onCancel,
+  onConfirm,
+}) => {
+  const [sourceWorkbookId, setSourceWorkbookId] = useState(initialSourceWorkbookId);
+  const [targetWorkbookId, setTargetWorkbookId] = useState(
+    workbooks.find((workbook) => workbook._id !== initialSourceWorkbookId)?._id || ''
+  );
+  const sourceWorkbook = workbooks.find((workbook) => workbook._id === sourceWorkbookId);
+  const targetOptions = workbooks.filter((workbook) => workbook._id !== sourceWorkbookId);
+
+  useEffect(() => {
+    if (!targetOptions.some((workbook) => workbook._id === targetWorkbookId)) {
+      setTargetWorkbookId(targetOptions[0]?._id || '');
+    }
+  }, [sourceWorkbookId, targetWorkbookId, targetOptions]);
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[70] grid place-items-center bg-orange-950/45 px-4 py-6 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isMerging) onCancel();
+      }}
+    >
+      <motion.section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="merge-contact-workbooks-title"
+        initial={{ opacity: 0, y: 14, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 10, scale: 0.98 }}
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-2xl"
+      >
+        <div className="border-b border-violet-100 bg-gradient-to-br from-violet-50 to-orange-50 px-6 py-5">
+          <div className="flex items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
+              <GitMerge size={21} />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-500">Administracion de contactos</p>
+              <h2 id="merge-contact-workbooks-title" className="mt-1 text-xl font-semibold text-orange-950">Unir dos Excel de contactos</h2>
+              <p className="mt-2 text-sm leading-5 text-orange-700">Los contactos del Excel origen se anadiran al destino. La pagina origen desaparecera al terminar.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 p-6">
+          <label className="block text-sm font-semibold text-orange-950">
+            Excel origen (se integrara y se eliminara)
+            <select
+              value={sourceWorkbookId}
+              onChange={(event) => setSourceWorkbookId(event.target.value)}
+              disabled={isMerging}
+              className="mt-2 w-full rounded-xl border border-orange-200 bg-white px-4 py-3 text-sm font-medium text-orange-950 outline-none focus:border-violet-400 disabled:opacity-50"
+            >
+              {workbooks.map((workbook) => (
+                <option key={workbook._id} value={workbook._id}>
+                  {workbook.name} ({workbook.rowCount || 0} contactos)
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex items-center gap-3 px-2 text-xs font-semibold text-violet-600">
+            <span className="h-px flex-1 bg-violet-100" />
+            <GitMerge size={16} />
+            <span className="h-px flex-1 bg-violet-100" />
+          </div>
+
+          <label className="block text-sm font-semibold text-orange-950">
+            Excel destino (conservara todos los contactos)
+            <select
+              value={targetWorkbookId}
+              onChange={(event) => setTargetWorkbookId(event.target.value)}
+              disabled={isMerging || !targetOptions.length}
+              className="mt-2 w-full rounded-xl border border-orange-200 bg-white px-4 py-3 text-sm font-medium text-orange-950 outline-none focus:border-violet-400 disabled:opacity-50"
+            >
+              {targetOptions.map((workbook) => (
+                <option key={workbook._id} value={workbook._id}>
+                  {workbook.name} ({workbook.rowCount || 0} contactos)
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+            Se conservaran las columnas de ambos Excel y los contactos vinculados a oportunidades seguiran vinculados.
+          </p>
+          {errorMessage && (
+            <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+              {errorMessage}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col-reverse gap-3 border-t border-orange-100 px-6 py-4 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onCancel} disabled={isMerging} className="rounded-xl border border-orange-100 px-4 py-2.5 text-sm font-semibold text-orange-700 transition hover:bg-orange-50 disabled:opacity-50">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm({ sourceWorkbookId, targetWorkbookId })}
+            disabled={isMerging || !sourceWorkbook || !targetWorkbookId}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:from-violet-700 hover:to-fuchsia-700 disabled:opacity-50"
+          >
+            <GitMerge size={17} />
+            {isMerging ? 'Uniendo contactos...' : 'Unir Excel'}
+          </button>
+        </div>
+      </motion.section>
+    </motion.div>
+  );
+};
 
 const ContactRowModal = ({ mode, columns, values, isSaving, entityLabel = 'contacto', onChange, onCancel, onSave }) => {
   const isOpportunity = entityLabel === 'oportunidad';
